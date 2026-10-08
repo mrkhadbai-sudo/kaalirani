@@ -17,6 +17,7 @@ tailwind.config={theme:{extend:{fontFamily:{serif:['Cinzel','serif'],sans:['Inte
 .felt{background-color:#043d2e;background-image:radial-gradient(#065f46 1px,transparent 1px);background-size:20px 20px}
 .card-hover{transition:transform .2s}
 .card-hover:not(:disabled):hover{transform:translateY(-16px) scale(1.05);z-index:30}
+.playable{box-shadow:0 0 0 3px #7dd3fc,0 0 14px rgba(125,211,252,.8);border-color:#7dd3fc}
 .no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{scrollbar-width:none}
 </style>
 </head>
@@ -392,7 +393,7 @@ function renderTable(){
     const b=document.createElement('button');
     const can=ok.includes(i);
     b.disabled=!can;
-    b.className=`card-hover relative w-16 h-24 md:w-20 md:h-28 shrink-0 bg-slate-100 rounded-lg card-shadow border ${c.isKaaliRani?'kr-glow':'border-slate-300'} ${can?'cursor-pointer':'opacity-60 cursor-not-allowed'}`;
+    b.className=`card-hover relative w-16 h-24 md:w-20 md:h-28 shrink-0 bg-slate-100 rounded-lg card-shadow border ${c.isKaaliRani?'kr-glow':'border-slate-300'} ${can?'playable cursor-pointer':'cursor-not-allowed'}`;
     b.innerHTML=face(c);
     b.onclick=()=>isHost?playCard(me,i):sendHost({type:'PLAY',idx:i});
     $('hand').appendChild(b);
