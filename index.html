@@ -1,1088 +1,1204 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Kaali Rani - Real-Time Multiplayer Card Game</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- PeerJS for Zero-Setup WebRTC Cross-Device Multiplayer -->
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      background-color: #070a12;
-      color: #f8fafc;
-      user-select: none;
-      -webkit-user-select: none;
-      overflow: hidden;
-    }
-
-    .font-cinzel { font-family: 'Cinzel', serif; }
-
-    /* Deep Green Casino Felt Table */
-    .felt-table {
-      background: radial-gradient(circle at center, #15803d 0%, #166534 50%, #0f391e 80%, #051a0c 100%);
-      box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
-    }
-
-    /* Playing Card Architecture */
-    .playing-card {
-      width: 68px;
-      height: 102px;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
-      position: relative;
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
-      cursor: pointer;
-      border: 1px solid #cbd5e1;
-      flex-shrink: 0;
-    }
-
-    @media (min-width: 640px) {
-      .playing-card {
-        width: 82px;
-        height: 122px;
-        border-radius: 10px;
-      }
-    }
-
-    @media (min-width: 1024px) {
-      .playing-card {
-        width: 94px;
-        height: 138px;
-      }
-    }
-
-    /* Interactive Playable Card Glows */
-    .playing-card.playable {
-      box-shadow: 0 0 0 3px #3b82f6, 0 8px 20px rgba(59, 130, 246, 0.5);
-      cursor: pointer;
-    }
-
-    .playing-card.playable:hover {
-      transform: translateY(-24px) scale(1.08) !important;
-      z-index: 60 !important;
-      box-shadow: 0 0 0 3px #60a5fa, 0 16px 30px rgba(59, 130, 246, 0.65);
-    }
-
-    .playing-card.disabled {
-      opacity: 0.5;
-      filter: grayscale(50%);
-      cursor: not-allowed;
-    }
-
-    /* Kaali Rani Distinct Purple Glow */
-    .playing-card.kaali-rani-card {
-      border: 2px solid #7c3aed;
-      background: linear-gradient(135deg, #ffffff 0%, #f3e8ff 100%);
-    }
-
-    .playing-card.kaali-rani-card.playable {
-      box-shadow: 0 0 0 3px #a855f7, 0 10px 24px rgba(168, 85, 247, 0.6);
-    }
-
-    .playing-card.red-suit { color: #dc2626; }
-    .playing-card.black-suit { color: #0f172a; }
-
-    /* Corner Rank/Suit Indices */
-    .card-corner {
-      position: absolute;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      line-height: 0.85;
-      font-weight: 800;
-      font-size: 0.78rem;
-    }
-    @media (min-width: 640px) {
-      .card-corner { font-size: 0.92rem; }
-    }
-    .card-corner.top-left { top: 4px; left: 5px; }
-    .card-corner.bottom-right { bottom: 4px; right: 5px; transform: rotate(180deg); }
-
-    /* Hand Dock Negative Margin Overlap */
-    .hand-dock {
-      display: flex;
-      justify-content: center;
-      align-items: flex-end;
-      padding-bottom: 6px;
-      width: 100%;
-      max-width: 100vw;
-      overflow-x: auto;
-      scroll-behavior: smooth;
-    }
-
-    .hand-dock .playing-card {
-      margin-left: -26px;
-    }
-    @media (min-width: 640px) {
-      .hand-dock .playing-card { margin-left: -30px; }
-    }
-    @media (min-width: 1024px) {
-      .hand-dock .playing-card { margin-left: -34px; }
-    }
-    .hand-dock .playing-card:first-child {
-      margin-left: 0 !important;
-    }
-
-    /* Radial Center Trick Slots */
-    .trick-slot-north { top: 8%; left: 50%; transform: translateX(-50%); }
-    .trick-slot-south { bottom: 8%; left: 50%; transform: translateX(-50%); }
-    .trick-slot-west  { left: 14%; top: 50%; transform: translateY(-50%); }
-    .trick-slot-east  { right: 14%; top: 50%; transform: translateY(-50%); }
-
-    /* Floating Point Animations */
-    @keyframes scoreFloat {
-      0% { opacity: 0; transform: translate(-50%, 10px) scale(0.8); }
-      20% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); }
-      80% { opacity: 1; transform: translate(-50%, -25px) scale(1); }
-      100% { opacity: 0; transform: translate(-50%, -45px) scale(0.85); }
-    }
-
-    .animate-score-popup {
-      animation: scoreFloat 1.8s forwards cubic-bezier(0.16, 1, 0.3, 1);
-    }
-  </style>
-</head>
-
-<body class="h-screen w-screen flex flex-col justify-between">
-
-  <!-- LANDING & ENTRY MODAL (No Password Needed) -->
-  <div id="landingModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
-      
-      <!-- Ambient Glow Effects -->
-      <div class="absolute -top-12 -left-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
-      <div class="absolute -bottom-12 -right-12 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none"></div>
-
-      <!-- Header Title -->
-      <div class="text-center mb-6">
-        <div class="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl shadow-xl mb-2">
-          <span class="text-3xl">♛</span>
-        </div>
-        <h1 class="text-3xl font-extrabold font-cinzel text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 tracking-wider">KAALI RANI</h1>
-        <p class="text-xs text-slate-400 mt-1 font-medium">Real-Time Cross-Device Card Game</p>
-      </div>
-
-      <!-- STEP 1: DISPLAY NAME & GROUP SELECTION -->
-      <div id="stepNameChoice" class="space-y-4">
-        <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Your Display Name</label>
-          <input id="displayNameInput" type="text" placeholder="e.g. Royal Player" maxlength="15"
-                 class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 transition">
-        </div>
-
-        <div class="grid grid-cols-2 gap-3 pt-1">
-          <button onclick="handleStartGroup()" class="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-2xl shadow-lg transition active:scale-95 group">
-            <span class="text-2xl mb-1 group-hover:scale-110 transition">👑</span>
-            <span class="font-bold text-sm">Start a Group</span>
-            <span class="text-[10px] text-amber-200/80">Host new room code</span>
-          </button>
-
-          <button onclick="showJoinInput()" class="flex flex-col items-center justify-center p-4 bg-slate-800 hover:bg-slate-700/80 text-white border border-slate-700 rounded-2xl shadow transition active:scale-95 group">
-            <span class="text-2xl mb-1 group-hover:scale-110 transition">🔑</span>
-            <span class="font-bold text-sm">Join a Group</span>
-            <span class="text-[10px] text-slate-400">Enter room code</span>
-          </button>
-        </div>
-
-        <!-- Join Room Input Section -->
-        <div id="joinCodeSection" class="hidden space-y-2 pt-1 bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/80">
-          <label class="block text-xs font-semibold text-amber-400">Enter 4-Character Room Code:</label>
-          <div class="flex gap-2">
-            <input id="roomCodeInput" type="text" placeholder="4921" maxlength="6" class="uppercase tracking-widest bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 flex-1">
-            <button onclick="handleJoinGroup()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-lg text-sm transition">Join</button>
-          </div>
-        </div>
-
-        <div class="relative flex py-1 items-center">
-          <div class="flex-grow border-t border-slate-800"></div>
-          <span class="flex-shrink mx-3 text-[10px] text-slate-500 font-bold uppercase">Or Solo Mode</span>
-          <div class="flex-grow border-t border-slate-800"></div>
-        </div>
-
-        <button onclick="startSoloVsAI()" class="w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl text-xs border border-slate-700 transition flex items-center justify-center gap-2">
-          <span>🤖</span> Play Offline Instant vs 3 Bots
-        </button>
-      </div>
-
-      <!-- STEP 2: GROUP WAITING LOBBY -->
-      <div id="stepGroupLobby" class="hidden space-y-5">
-        <div class="text-center bg-slate-800/90 border border-slate-700 rounded-2xl p-4 shadow-inner">
-          <span class="text-[11px] text-slate-400 font-bold uppercase tracking-widest">Share Room Code With Friends</span>
-          <div class="flex items-center justify-center gap-3 mt-1">
-            <span id="displayRoomCode" class="text-3xl font-extrabold font-mono text-amber-400 tracking-widest">KR-0000</span>
-            <button onclick="copyRoomCode()" class="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg text-xs text-slate-200 transition" title="Copy Code">📋</button>
-          </div>
-        </div>
-
-        <div>
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Connected Players (<span id="playerCount">1</span>/4)</span>
-            <span id="p2pStatus" class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live P2P Ready
-            </span>
-          </div>
-          <div id="lobbyPlayerList" class="space-y-2">
-            <!-- Dynamic Real-Time Connected Players -->
-          </div>
-        </div>
-
-        <div class="space-y-2 pt-2">
-          <button id="startLobbyBtn" onclick="launchGroupGame()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2">
-            <span>🚀</span> Start Game (Fill Empty Seats with Bots)
-          </button>
-          <button onclick="leaveLobby()" class="w-full text-xs text-slate-400 hover:text-rose-400 transition py-1">Leave Room</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- MAIN CASINO FELT GAME TABLE -->
-  <main class="relative flex-1 felt-table flex flex-col justify-between p-3 md:p-6 overflow-hidden">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaali Rani - P2P Multiplayer Card Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for P2P Networking -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- TOP PLAYER (NORTH) -->
-    <div class="flex flex-col items-center z-10">
-      <div id="badge-north" class="bg-slate-900/90 border border-slate-700/80 px-4 py-1.5 rounded-full text-xs font-semibold text-slate-200 shadow-xl flex items-center gap-2">
-        <span id="name-north">North (Bot)</span>
-        <span class="text-slate-500">•</span>
-        <span id="score-north" class="text-amber-400 font-bold">0 pts</span>
-      </div>
-      <div id="cardsLeft-north" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
-    </div>
-
-    <!-- WEST & EAST PLAYER BADGES -->
-    <div class="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
-      <div id="badge-west" class="bg-slate-900/90 border border-slate-700/80 px-3 py-2 rounded-2xl text-xs font-semibold text-slate-200 shadow-xl flex flex-col items-center">
-        <span id="name-west">West</span>
-        <span id="score-west" class="text-amber-400 font-bold mt-0.5">0 pts</span>
-      </div>
-      <div id="cardsLeft-west" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
-    </div>
-
-    <div class="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
-      <div id="badge-east" class="bg-slate-900/90 border border-slate-700/80 px-3 py-2 rounded-2xl text-xs font-semibold text-slate-200 shadow-xl flex flex-col items-center">
-        <span id="name-east">East</span>
-        <span id="score-east" class="text-amber-400 font-bold mt-0.5">0 pts</span>
-      </div>
-      <div id="cardsLeft-east" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
-    </div>
-
-    <!-- CENTER FELT TRICK AREA -->
-    <div class="relative flex-1 flex items-center justify-center my-2">
-      
-      <!-- Watermark Logo -->
-      <div class="text-center opacity-15 pointer-events-none">
-        <h2 class="text-4xl sm:text-6xl md:text-7xl font-black font-cinzel text-amber-200 tracking-widest">KAALI RANI</h2>
-        <p class="text-xs uppercase tracking-widest text-amber-100 font-bold mt-1">Trick <span id="currentTrickNum">1</span> of 13</p>
-      </div>
-
-      <!-- Turn Banner -->
-      <div id="turnIndicator" class="absolute top-2 bg-slate-950/90 border border-amber-500/60 text-amber-300 px-5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-        <span id="turnIndicatorText">Dealt 13 Cards! Ready to play...</span>
-      </div>
-
-      <!-- Trick Winner Announcement Banner -->
-      <div id="trickBanner" class="hidden absolute z-40 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black px-6 py-2.5 rounded-full shadow-2xl text-sm md:text-base border-2 border-amber-200 tracking-wide transform -translate-y-4">
-        🏆 Player Wins Trick!
-      </div>
-
-      <!-- Score Popup Floating Effect -->
-      <div id="scorePopup" class="hidden absolute z-50 left-1/2 top-1/2 -translate-x-1/2 font-black text-2xl tracking-wider animate-score-popup pointer-events-none drop-shadow-md">
-        +13 Pts
-      </div>
-
-      <!-- 4 Radial Trick Slots -->
-      <div id="trickCardNorth" class="absolute trick-slot-north hidden"></div>
-      <div id="trickCardSouth" class="absolute trick-slot-south hidden"></div>
-      <div id="trickCardWest"  class="absolute trick-slot-west hidden"></div>
-      <div id="trickCardEast"  class="absolute trick-slot-east hidden"></div>
-    </div>
-
-    <!-- BOTTOM PLAYER (YOU / SOUTH) -->
-    <div class="flex flex-col items-center z-20 w-full">
-      <div id="badge-south" class="bg-slate-900/95 border border-amber-500/80 px-5 py-1.5 rounded-full text-xs font-bold text-amber-300 shadow-xl mb-2 flex items-center gap-3">
-        <span id="name-south">You (South)</span>
-        <span class="text-amber-500/50">•</span>
-        <span id="score-south" class="text-amber-400 font-extrabold text-sm">0 pts</span>
-      </div>
-
-      <!-- Player Hand Dock (All 13 Dealt Cards Rendered Here) -->
-      <div id="playerHand" class="hand-dock">
-        <!-- Dynamic Cards -->
-      </div>
-    </div>
-  </main>
-
-  <!-- ROUND SUMMARY MODAL -->
-  <div id="roundSummaryModal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl text-center">
-      <h2 class="text-2xl font-bold font-cinzel text-amber-400 mb-1">Round Complete!</h2>
-      <p class="text-xs text-slate-400 mb-4">Point cards collected during this hand</p>
-
-      <div class="bg-slate-800/80 rounded-2xl border border-slate-700/80 overflow-hidden mb-5">
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-950/60 text-slate-400 uppercase font-bold text-[10px] tracking-wider">
-            <tr>
-              <th class="p-3">Player</th>
-              <th class="p-3">Cards Picked</th>
-              <th class="p-3 text-right">Round</th>
-              <th class="p-3 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody id="roundScoresTable" class="divide-y divide-slate-700/50 font-medium">
-            <!-- Dynamic Score Rows -->
-          </tbody>
-        </table>
-      </div>
-
-      <button id="nextRoundBtn" onclick="requestNextRound()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition shadow-lg text-sm">
-        Next Hand →
-      </button>
-    </div>
-  </div>
-
-  <!-- GAME OVER CHAMPION MODAL -->
-  <div id="gameOverModal" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 max-w-md w-full shadow-2xl text-center">
-      <div class="text-5xl mb-2">🏆</div>
-      <h2 class="text-3xl font-black font-cinzel text-amber-400">GAME OVER</h2>
-      <p id="winnerAnnouncement" class="text-sm font-semibold text-slate-300 my-2">Player is the Kaali Rani Champion!</p>
-
-      <div id="finalRankings" class="bg-slate-800/80 rounded-2xl border border-slate-700 p-3 my-4 space-y-2 text-xs">
-        <!-- Ranked Players -->
-      </div>
-
-      <button onclick="resetFullMatch()" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 rounded-xl transition shadow-xl text-sm">
-        Play Again 🔄
-      </button>
-    </div>
-  </div>
-
-  <script>
-    /* ==========================================================================
-       KAALI RANI NETWORK & GAME ENGINE (PEERJS REAL-TIME MULTIPLAYER)
-       ========================================================================== */
-
-    const SUITS = ['♠', '♥', '♦', '♣'];
-    const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    const RANK_VALUES = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
-
-    // App Local State
-    let myDisplayName = "Player";
-    let myPeerId = null;
-    let roomCode = null;
-    let isHost = false;
-    let peer = null;
-    let connections = []; // Host keeps track of all joined client connections
-    let hostConn = null;  // Client reference to host connection
-
-    // Master Game State (Synchronized across all connected devices)
-    let gameState = {
-      status: 'LOBBY', // LOBBY, PLAYING, ROUND_END, GAME_OVER
-      roomCode: null,
-      players: [
-        { seat: 0, peerId: null, name: 'You', isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] },
-        { seat: 1, peerId: null, name: 'West (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] },
-        { seat: 2, peerId: null, name: 'North (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] },
-        { seat: 3, peerId: null, name: 'East (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] }
-      ],
-      hands: { 0: [], 1: [], 2: [], 3: [] },
-      currentTrickNumber: 1,
-      currentTurnSeat: 0,
-      ledSuit: null,
-      currentTrickCards: [], // [{ seat: 0, card: {...} }]
-      isProcessingTrick: false
-    };
-
-    let mySeat = 0; // Local seat index (0..3)
-
-    /* --- PEERJS NETWORKING LAYER --- */
-
-    function getPeerIDForRoom(code) {
-      return `kaali-rani-room-v2-${code.toUpperCase().trim()}`;
-    }
-
-    function showJoinInput() {
-      document.getElementById('joinCodeSection').classList.toggle('hidden');
-    }
-
-    function getEnteredName() {
-      const input = document.getElementById('displayNameInput').value.trim();
-      return input ? input.substring(0, 15) : "Player " + Math.floor(100 + Math.random() * 900);
-    }
-
-    // Host starts a new group
-    function handleStartGroup() {
-      myDisplayName = getEnteredName();
-      roomCode = Math.floor(1000 + Math.random() * 9000).toString();
-      isHost = true;
-      mySeat = 0;
-
-      const hostPeerId = getPeerIDForRoom(roomCode);
-      peer = new Peer(hostPeerId);
-
-      peer.on('open', (id) => {
-        myPeerId = id;
-        gameState.roomCode = roomCode;
-        gameState.players[0] = { seat: 0, peerId: id, name: myDisplayName, isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] };
-
-        document.getElementById('displayRoomCode').innerText = `KR-${roomCode}`;
-        document.getElementById('stepNameChoice').classList.add('hidden');
-        document.getElementById('stepGroupLobby').classList.remove('hidden');
-        updateLobbyUI();
-      });
-
-      peer.on('connection', (conn) => {
-        conn.on('open', () => {
-          connections.push(conn);
-        });
-
-        conn.on('data', (data) => {
-          handleIncomingHostMessage(conn, data);
-        });
-
-        conn.on('close', () => {
-          connections = connections.filter(c => c !== conn);
-          // Remove player from lobby
-          const pIdx = gameState.players.findIndex(p => p.peerId === conn.peer);
-          if (pIdx !== -1 && gameState.status === 'LOBBY') {
-            gameState.players[pIdx] = { seat: pIdx, peerId: null, name: `Bot ${pIdx}`, isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
-            broadcastGameState();
-            updateLobbyUI();
-          }
-        });
-      });
-
-      peer.on('error', (err) => {
-        console.warn("PeerJS Host Error:", err);
-        if (err.type === 'unavailable-id') {
-          // Retry generating a new room code
-          handleStartGroup();
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        felt: {
+                            800: '#064e3b',
+                            900: '#022c22',
+                            950: '#011711',
+                        },
+                        gold: {
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                        }
+                    },
+                    fontFamily: {
+                        serif: ['Cinzel', 'serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
         }
-      });
-    }
-
-    // Client joins an existing group
-    function handleJoinGroup() {
-      const enteredCode = document.getElementById('roomCodeInput').value.trim().toUpperCase().replace('KR-', '');
-      if (!enteredCode) {
-        showToast("Please enter a 4-digit room code!");
-        return;
-      }
-
-      myDisplayName = getEnteredName();
-      roomCode = enteredCode;
-      isHost = false;
-
-      peer = new Peer(); // Auto-assigned client peer ID
-
-      peer.on('open', (id) => {
-        myPeerId = id;
-        const targetHostPeerId = getPeerIDForRoom(roomCode);
-        hostConn = peer.connect(targetHostPeerId);
-
-        hostConn.on('open', () => {
-          // Send Join Request
-          hostConn.send({ type: 'JOIN', name: myDisplayName, peerId: myPeerId });
-          document.getElementById('displayRoomCode').innerText = `KR-${roomCode}`;
-          document.getElementById('stepNameChoice').classList.add('hidden');
-          document.getElementById('stepGroupLobby').classList.remove('hidden');
-          document.getElementById('startLobbyBtn').classList.add('hidden'); // Only host sees start button
-        });
-
-        hostConn.on('data', (data) => {
-          handleIncomingClientMessage(data);
-        });
-
-        hostConn.on('close', () => {
-          showToast("Host disconnected from room!");
-        });
-      });
-
-      peer.on('error', (err) => {
-        showToast("Could not connect to room. Check code!");
-      });
-    }
-
-    function handleIncomingHostMessage(conn, data) {
-      if (data.type === 'JOIN') {
-        // Find first empty seat
-        const emptySeatIndex = gameState.players.findIndex(p => p.isBot);
-        if (emptySeatIndex !== -1 && gameState.status === 'LOBBY') {
-          gameState.players[emptySeatIndex] = {
-            seat: emptySeatIndex,
-            peerId: data.peerId,
-            name: data.name,
-            isBot: false,
-            totalScore: 0,
-            roundScore: 0,
-            cardsPicked: []
-          };
-          broadcastGameState();
-          updateLobbyUI();
+    </script>
+    <style>
+        /* Custom card and ambient effects */
+        .card-shadow {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
         }
-      } else if (data.type === 'ACTION_PLAY_CARD') {
-        if (data.seat === gameState.currentTurnSeat && !gameState.isProcessingTrick) {
-          executePlayCard(data.seat, data.card);
+        .kaali-rani-glow {
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.8), 0 0 30px rgba(168, 85, 247, 0.4);
+            border: 2px solid #c084fc !important;
         }
-      } else if (data.type === 'ACTION_NEXT_ROUND') {
-        if (gameState.status === 'ROUND_END') {
-          startNextRound();
+        .felt-texture {
+            background-color: #043d2e;
+            background-image: radial-gradient(#065f46 1px, transparent 1px), radial-gradient(#022c22 1px, #043d2e 1px);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
         }
-      }
-    }
+        .card-3d-hover {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-3d-hover:hover {
+            transform: translateY(-16px) scale(1.05);
+            z-index: 30;
+        }
+        /* Custom scrollbar for hand on smaller screens */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-hidden select-none bg-slate-950 text-slate-100">
 
-    function handleIncomingClientMessage(data) {
-      if (data.type === 'STATE_UPDATE') {
-        gameState = data.gameState;
+    <!-- Toast Notification Overlay -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="relative flex-1 flex flex-col h-full felt-texture overflow-hidden">
         
-        // Find my assigned seat
-        const me = gameState.players.find(p => p.peerId === myPeerId);
-        if (me) mySeat = me.seat;
+        <!-- Top Navigation / Status Header -->
+        <header class="h-14 bg-slate-950/80 backdrop-blur-md border-b border-emerald-800/40 px-4 flex items-center justify-between z-20">
+            <div class="flex items-center space-x-3">
+                <span class="font-serif text-xl font-bold tracking-wider text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid font-normal fa-crown text-amber-400"></i> KAALI RANI
+                </span>
+                <span id="header-room-badge" class="hidden text-xs px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 font-mono">
+                    ROOM: <span id="header-room-code" class="font-bold text-amber-300">----</span>
+                </span>
+            </div>
 
-        if (gameState.status === 'LOBBY') {
-          updateLobbyUI();
-        } else if (gameState.status === 'PLAYING') {
-          document.getElementById('landingModal').classList.add('hidden');
-          renderTableState();
-        } else if (gameState.status === 'ROUND_END') {
-          renderRoundSummary();
-        } else if (gameState.status === 'GAME_OVER') {
-          renderGameOver();
-        }
-      }
-    }
+            <div id="game-status-banner" class="hidden md:flex items-center text-sm font-medium text-slate-300 bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700/60 shadow-inner">
+                <span id="status-text">Welcome to Kaali Rani</span>
+            </div>
 
-    function broadcastGameState() {
-      if (!isHost) return;
-      connections.forEach(conn => {
-        if (conn.open) {
-          conn.send({ type: 'STATE_UPDATE', gameState: gameState });
-        }
-      });
-      // Also update host UI locally
-      if (gameState.status === 'LOBBY') {
-        updateLobbyUI();
-      } else if (gameState.status === 'PLAYING') {
-        renderTableState();
-      } else if (gameState.status === 'ROUND_END') {
-        renderRoundSummary();
-      } else if (gameState.status === 'GAME_OVER') {
-        renderGameOver();
-      }
-    }
+            <div class="flex items-center space-x-2">
+                <button id="score-btn" onclick="toggleScoreModal()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-200 border border-emerald-700/50 transition">
+                    <i class="fa-solid fa-list-ol mr-1"></i> Scores
+                </button>
+                <button id="leave-btn" onclick="leaveRoom()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/40 transition">
+                    <i class="fa-solid fa-door-open mr-1"></i> Exit
+                </button>
+            </div>
+        </header>
 
-    function updateLobbyUI() {
-      const container = document.getElementById('lobbyPlayerList');
-      const humanPlayers = gameState.players.filter(p => !p.isBot);
-      document.getElementById('playerCount').innerText = humanPlayers.length;
+        <!-- FELT GAME TABLE CANVAS -->
+        <main id="game-table" class="relative flex-1 flex flex-col justify-between p-2 md:p-6 max-w-7xl mx-auto w-full">
+            
+            <!-- NORTH SEAT (Opponent Top) -->
+            <div class="flex justify-center z-10">
+                <div id="seat-north" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-4 py-2 flex items-center space-x-3 shadow-lg min-w-[180px]">
+                    <div class="relative">
+                        <div id="avatar-north" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
+                            N
+                        </div>
+                        <span id="distributor-north" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
+                    </div>
+                    <div class="flex-1">
+                        <div id="name-north" class="text-xs font-semibold text-slate-200 max-w-[100px] truncate">Empty</div>
+                        <div class="flex items-center space-x-2 text-[11px] text-slate-400">
+                            <span>Cards: <strong id="cards-count-north" class="text-emerald-400">0</strong></span>
+                            <span>Pts: <strong id="pts-north" class="text-amber-400">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-      container.innerHTML = gameState.players.map((p, i) => `
-        <div class="flex items-center justify-between bg-slate-800/90 border border-slate-700/80 px-3.5 py-2.5 rounded-xl">
-          <div class="flex items-center gap-2.5">
-            <span class="w-7 h-7 rounded-full ${i === 0 ? 'bg-amber-500' : 'bg-indigo-600'} flex items-center justify-center text-xs font-bold text-slate-950">
-              ${i === 0 ? '👑' : i + 1}
-            </span>
-            <span class="font-semibold text-sm text-slate-200">${p.name}</span>
-          </div>
-          <span class="text-[11px] font-bold px-2 py-0.5 rounded-md ${p.isBot ? 'bg-slate-700 text-slate-400' : 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'}">
-            ${p.isBot ? 'AI Bot Seat' : 'Connected'}
-          </span>
+            <!-- MIDDLE SECTION: WEST, CENTER TRICK, EAST -->
+            <div class="flex-1 flex items-center justify-between my-2 relative">
+                
+                <!-- WEST SEAT (Left Opponent) -->
+                <div class="z-10">
+                    <div id="seat-west" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 shadow-lg min-w-[160px]">
+                        <div class="relative">
+                            <div id="avatar-west" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
+                                W
+                            </div>
+                            <span id="distributor-west" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
+                        </div>
+                        <div class="flex-1">
+                            <div id="name-west" class="text-xs font-semibold text-slate-200 max-w-[90px] truncate">Empty</div>
+                            <div class="text-[11px] text-slate-400">Cards: <strong id="cards-count-west" class="text-emerald-400">0</strong></div>
+                            <div class="text-[11px] text-slate-400">Pts: <strong id="pts-west" class="text-amber-400">0</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TRICK PLAY AREA (CENTER OF TABLE) -->
+                <div class="absolute inset-0 m-auto w-64 h-64 md:w-80 md:h-80 rounded-full border border-emerald-500/20 bg-emerald-950/20 backdrop-blur-xs flex items-center justify-center shadow-2xl">
+                    <div class="relative w-full h-full flex items-center justify-center">
+                        
+                        <!-- Trick Slot: North -->
+                        <div id="trick-slot-north" class="absolute top-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
+                        
+                        <!-- Trick Slot: West -->
+                        <div id="trick-slot-west" class="absolute left-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
+                        
+                        <!-- Trick Slot: East -->
+                        <div id="trick-slot-east" class="absolute right-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
+                        
+                        <!-- Trick Slot: South (Me) -->
+                        <div id="trick-slot-south" class="absolute bottom-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
+
+                        <!-- Center Trick Indicator Text -->
+                        <div id="center-trick-status" class="text-center p-2 rounded-lg bg-slate-950/70 backdrop-blur border border-amber-500/30 pointer-events-none hidden max-w-[180px]">
+                            <p id="trick-status-title" class="text-[11px] text-amber-300 font-semibold uppercase tracking-wider">Current Trick</p>
+                            <p id="trick-status-desc" class="text-xs text-slate-200 mt-0.5">Waiting for lead...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EAST SEAT (Right Opponent) -->
+                <div class="z-10">
+                    <div id="seat-east" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 shadow-lg min-w-[160px]">
+                        <div class="flex-1 text-right">
+                            <div id="name-east" class="text-xs font-semibold text-slate-200 max-w-[90px] truncate ml-auto">Empty</div>
+                            <div class="text-[11px] text-slate-400">Cards: <strong id="cards-count-east" class="text-emerald-400">0</strong></div>
+                            <div class="text-[11px] text-slate-400">Pts: <strong id="pts-east" class="text-amber-400">0</strong></div>
+                        </div>
+                        <div class="relative">
+                            <div id="avatar-east" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
+                                E
+                            </div>
+                            <span id="distributor-east" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- SOUTH SEAT & HAND DOCK (Local Player) -->
+            <div class="z-20 flex flex-col items-center w-full">
+                
+                <!-- Local Player Information Pill -->
+                <div id="seat-south" class="mb-2 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-full px-5 py-1.5 flex items-center space-x-4 shadow-xl">
+                    <div class="relative flex items-center space-x-2">
+                        <div id="avatar-south" class="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-sm border border-amber-300">
+                            YOU
+                        </div>
+                        <span id="name-south" class="text-xs font-bold text-slate-100">You</span>
+                        <span id="distributor-south" class="hidden bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">DISTRIBUTOR</span>
+                    </div>
+                    <div class="h-4 w-px bg-slate-700"></div>
+                    <div class="text-xs text-slate-300">
+                        Points Captured: <strong id="pts-south" class="text-amber-400 font-bold">0</strong>
+                    </div>
+                </div>
+
+                <!-- 13 CARD HAND DOCK -->
+                <div class="relative w-full max-w-4xl min-h-[140px] flex justify-center items-end pb-2">
+                    <div id="player-hand-container" class="flex justify-center items-end -space-x-8 md:-space-x-10 hover:-space-x-6 transition-all duration-300 px-4 py-2 overflow-x-auto max-w-full no-scrollbar">
+                        <!-- Card elements injected dynamically -->
+                        <div class="text-slate-400 text-sm italic py-8">Waiting to join or start game...</div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL 1: LOBBY & ENTRY SETUP -->
+    <div id="modal-lobby" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 max-w-xl w-full shadow-2xl relative">
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-3xl mb-3">
+                    <i class="fa-solid fa-crown"></i>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-serif font-bold text-amber-400 tracking-wide">KAALI RANI</h1>
+                <p class="text-slate-400 text-xs md:text-sm mt-1">Real-time P2P Trick-Taking Card Game (Queen of Spades)</p>
+            </div>
+
+            <!-- NAME INPUT & INITIAL CONTROLS -->
+            <div id="lobby-entry-step" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Your Display Name</label>
+                    <input type="text" id="player-name-input" maxlength="12" placeholder="Enter your name..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 pt-2">
+                    <button onclick="handleStartGroup()" class="py-3.5 px-4 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus-circle"></i> Start a Group
+                    </button>
+                    <button onclick="showJoinInput()" class="py-3.5 px-4 rounded-xl font-bold bg-emerald-700 hover:bg-emerald-600 text-white transition shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-users"></i> Join a Group
+                    </button>
+                </div>
+
+                <!-- JOIN CODE INPUT BOX (HIDDEN INITIALLY) -->
+                <div id="join-code-box" class="hidden pt-2 border-t border-slate-800 mt-4 space-y-3">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Enter 4-Character Room Code</label>
+                    <div class="flex space-x-2">
+                        <input type="text" id="room-code-input" maxlength="4" placeholder="e.g. KR89" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center uppercase font-mono text-lg font-bold tracking-widest text-amber-300 focus:outline-none focus:border-amber-500">
+                        <button onclick="handleJoinGroup()" class="px-6 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl text-white transition">Join</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LOBBY ROOM WAITING SCREEN (SHOWN WHEN IN LOBBY) -->
+            <div id="lobby-room-step" class="hidden space-y-5">
+                <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-400 uppercase font-semibold">Room Code</span>
+                        <div id="lobby-code-display" class="text-2xl font-mono font-bold text-amber-400 tracking-wider">----</div>
+                    </div>
+                    <button onclick="copyRoomCode()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-600 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-copy"></i> Copy Code
+                    </button>
+                </div>
+
+                <!-- 4 SEATS PREVIEW IN LOBBY -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Players in Room (4 Max)</span>
+                        <span id="lobby-count-tag" class="text-xs text-emerald-400 font-medium">1 / 4 Players</span>
+                    </div>
+                    <div id="lobby-seats-list" class="grid grid-cols-2 gap-3">
+                        <!-- Dynamic seat items generated here -->
+                    </div>
+                </div>
+
+                <!-- HOST VS GUEST ACTION BUTTONS -->
+                <div id="host-lobby-actions" class="hidden pt-3 border-t border-slate-800 space-y-2">
+                    <button id="start-game-btn" onclick="handleHostStartGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 font-bold text-slate-950 rounded-xl shadow-lg transition text-base">
+                        <i class="fa-solid fa-play mr-2"></i> Start Game (Fill Bots for Empty Seats)
+                    </button>
+                    <p class="text-[11px] text-center text-slate-400">Empty seats will be automatically filled with AI Bots when game starts.</p>
+                </div>
+
+                <div id="guest-lobby-actions" class="hidden pt-3 border-t border-slate-800 text-center py-2">
+                    <div class="inline-flex items-center space-x-2 text-amber-400 font-medium text-sm">
+                        <i class="fa-solid fa-spinner animate-spin"></i>
+                        <span>Waiting for host to start the game...</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
-      `).join('');
-    }
+    </div>
 
-    function startSoloVsAI() {
-      myDisplayName = getEnteredName();
-      isHost = true;
-      mySeat = 0;
-      gameState.players[0] = { seat: 0, peerId: 'local', name: myDisplayName, isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] };
-      gameState.players[1] = { seat: 1, peerId: null, name: 'West (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
-      gameState.players[2] = { seat: 2, peerId: null, name: 'North (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
-      gameState.players[3] = { seat: 3, peerId: null, name: 'East (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
+    <!-- MODAL 2: DISTRIBUTOR CUT CARD SETUP -->
+    <div id="modal-distributor" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full shadow-2xl text-center">
+            
+            <h2 class="text-2xl font-serif font-bold text-amber-400 mb-1">Draw for Distributor</h2>
+            <p class="text-xs text-slate-300 mb-6">Each player cuts a card from the deck. The player with the highest rank becomes the Distributor!</p>
 
-      document.getElementById('landingModal').classList.add('hidden');
-      startNewMatch();
-    }
+            <!-- 4 SEAT CUT CARDS DISPLAY -->
+            <div id="cut-cards-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <!-- Dynamically generated cut cards -->
+            </div>
 
-    function launchGroupGame() {
-      if (!isHost) return;
-      document.getElementById('landingModal').classList.add('hidden');
-      startNewMatch();
-    }
+            <div id="cut-result-banner" class="hidden bg-emerald-950/80 border border-emerald-600/50 p-3 rounded-xl mb-6">
+                <p id="distributor-winner-text" class="text-sm font-bold text-emerald-300">Winner...</p>
+            </div>
 
-    function copyRoomCode() {
-      if (roomCode) {
-        navigator.clipboard ? navigator.clipboard.writeText(`KR-${roomCode}`) : document.execCommand('copy');
-        showToast("Room code copied to clipboard!");
-      }
-    }
+            <!-- ACTION BUTTON -->
+            <div id="distributor-action-box">
+                <button id="deal-hands-btn" onclick="handleStartDealing()" class="hidden w-full py-3.5 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl shadow-lg transition">
+                    <i class="fa-solid fa-cards mr-2"></i> Deal 13 Cards to All Players
+                </button>
+                <p id="distributor-wait-text" class="hidden text-sm text-amber-400 font-medium animate-pulse">
+                    Waiting for Distributor to deal cards...
+                </p>
+            </div>
 
-    function leaveLobby() {
-      if (peer) peer.destroy();
-      document.getElementById('stepGroupLobby').classList.add('hidden');
-      document.getElementById('stepNameChoice').classList.remove('hidden');
-    }
+        </div>
+    </div>
 
-    function showToast(msg) {
-      const el = document.getElementById('turnIndicatorText');
-      if (el) el.innerText = msg;
-    }
+    <!-- MODAL 3: SCOREBOARD & SUMMARY -->
+    <div id="modal-scores" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+                <h3 class="text-xl font-serif font-bold text-amber-400">Match Scores</h3>
+                <button onclick="toggleScoreModal()" class="text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
 
-    /* --- CARD ENGINE & GAME LOGIC --- */
+            <div class="space-y-3 mb-6">
+                <div id="score-rows-list" class="space-y-2">
+                    <!-- Dynamic score rows -->
+                </div>
+            </div>
 
-    function create52CardDeck() {
-      const deck = [];
-      for (let suit of SUITS) {
-        for (let rank of RANKS) {
-          const isKaaliRani = (suit === '♠' && rank === 'Q');
-          const isJackDiamonds = (suit === '♦' && rank === 'J');
-          const isHeart = (suit === '♥');
-          
-          let points = 0;
-          if (isKaaliRani) points = 13;
-          else if (isJackDiamonds) points = -10;
-          else if (isHeart) points = 1;
+            <div id="round-over-actions" class="hidden pt-2 border-t border-slate-800">
+                <button id="next-round-btn" onclick="handleHostStartGame()" class="w-full py-3 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl shadow transition">
+                    Start Next Round
+                </button>
+            </div>
+        </div>
+    </div>
 
-          deck.push({
-            suit,
-            rank,
-            value: RANK_VALUES[rank],
-            isKaaliRani,
-            isJackDiamonds,
-            isHeart,
-            points,
-            id: `${rank}_${suit}`
-          });
-        }
-      }
-      return deck;
-    }
+    <script>
+        /**
+         * KAALI RANI ARCHITECTURE & CONSTANTS
+         */
+        const SUITS = {
+            'SPADES': { symbol: '♠', color: 'text-slate-100', name: 'Spades' },
+            'HEARTS': { symbol: '♥', color: 'text-red-500', name: 'Hearts' },
+            'DIAMONDS': { symbol: '♦', color: 'text-red-500', name: 'Diamonds' },
+            'CLUBS': { symbol: '♣', color: 'text-slate-100', name: 'Clubs' }
+        };
 
-    function shuffleDeck(deck) {
-      for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-      }
-      return deck;
-    }
+        const RANKS = [
+            { code: '2', val: 2 }, { code: '3', val: 3 }, { code: '4', val: 4 },
+            { code: '5', val: 5 }, { code: '6', val: 6 }, { code: '7', val: 7 },
+            { code: '8', val: 8 }, { code: '9', val: 9 }, { code: '10', val: 10 },
+            { code: 'J', val: 11 }, { code: 'Q', val: 12 }, { code: 'K', val: 13 }, { code: 'A', val: 14 }
+        ];
 
-    function startNewMatch() {
-      gameState.players.forEach(p => {
-        p.totalScore = 0;
-        p.roundScore = 0;
-      });
-      startNextRound();
-    }
+        // Global State
+        let myPeer = null;
+        let myPeerId = null;
+        let roomCode = null;
+        let isHost = false;
+        let mySeatIndex = 0; // 0=South, 1=West, 2=North, 3=East in master array
+        let hostConnections = []; // Host keeps track of all guest connections
+        let guestConnection = null; // Guest keeps connection to Host
+        let localBroadcastChannel = null;
 
-    function startNextRound() {
-      if (!isHost) return;
-      gameState.status = 'PLAYING';
-      gameState.currentTrickNumber = 1;
-      gameState.currentTrickCards = [];
-      gameState.ledSuit = null;
-      gameState.isProcessingTrick = false;
+        // Master Game State (Managed by Host, replicated to guests)
+        let gameState = {
+            status: 'ENTRY', // ENTRY, LOBBY, CUT_CARD, PLAYING, ROUND_OVER
+            roomCode: '',
+            seats: [
+                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
+                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
+                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
+                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null }
+            ],
+            distributorIndex: -1,
+            currentTurn: -1,
+            leadSuit: null,
+            currentTrick: [], // [{ card, playedBySeat }]
+            completedTricks: 0
+        };
 
-      gameState.players.forEach(p => {
-        p.roundScore = 0;
-        p.cardsPicked = [];
-      });
-
-      // Deal 52 cards evenly (13 cards to all 4 seats)
-      const deck = shuffleDeck(create52CardDeck());
-      for (let i = 0; i < 52; i++) {
-        const seat = i % 4;
-        if (!gameState.hands[seat]) gameState.hands[seat] = [];
-        if (i < 4) gameState.hands[seat] = []; // Reset hand
-        gameState.hands[seat].push(deck[i]);
-      }
-
-      // Sort hands
-      for (let seat = 0; seat < 4; seat++) {
-        sortHand(gameState.hands[seat]);
-      }
-
-      // Starter leader (2♣ or random)
-      let leaderSeat = 0;
-      for (let seat = 0; seat < 4; seat++) {
-        if (gameState.hands[seat].some(c => c.suit === '♣' && c.rank === '2')) {
-          leaderSeat = seat;
-          break;
-        }
-      }
-      gameState.currentTurnSeat = leaderSeat;
-
-      broadcastGameState();
-
-      if (gameState.players[gameState.currentTurnSeat].isBot) {
-        setTimeout(processBotTurn, 1000);
-      }
-    }
-
-    function sortHand(hand) {
-      const suitOrder = { '♠': 1, '♥': 2, '♣': 3, '♦': 4 };
-      hand.sort((a, b) => {
-        if (suitOrder[a.suit] !== suitOrder[b.suit]) {
-          return suitOrder[a.suit] - suitOrder[b.suit];
-        }
-        return a.value - b.value;
-      });
-    }
-
-    /* --- RELATIVE POSITIONING & TABLE RENDERING --- */
-
-    // Map global seats (0..3) relative to local player's seat (mySeat)
-    function getRelativeSeat(targetSeat) {
-      const positions = ['south', 'west', 'north', 'east'];
-      const relIndex = (targetSeat - mySeat + 4) % 4;
-      return positions[relIndex];
-    }
-
-    function renderTableState() {
-      // 1. Update Badges & Names
-      for (let seat = 0; seat < 4; seat++) {
-        const p = gameState.players[seat];
-        const relPos = getRelativeSeat(seat);
-
-        const nameEl = document.getElementById(`name-${relPos}`);
-        const scoreEl = document.getElementById(`score-${relPos}`);
-        const cardsLeftEl = document.getElementById(`cardsLeft-${relPos}`);
-
-        if (nameEl) nameEl.innerText = p.name;
-        if (scoreEl) scoreEl.innerText = `${p.totalScore + p.roundScore} pts`;
-        if (cardsLeftEl && gameState.hands[seat]) {
-          cardsLeftEl.innerText = `${gameState.hands[seat].length} cards`;
-        }
-      }
-
-      // 2. Render Player Hand (13 cards in South dock)
-      renderLocalHand();
-
-      // 3. Render Center Trick Cards
-      clearTrickSlots();
-      gameState.currentTrickCards.forEach(tc => {
-        const relPos = getRelativeSeat(tc.seat);
-        renderTrickSlot(relPos, tc.card);
-      });
-
-      // 4. Turn Banner
-      const currentTurnPlayer = gameState.players[gameState.currentTurnSeat];
-      const indicatorText = document.getElementById('turnIndicatorText');
-      document.getElementById('currentTrickNum').innerText = gameState.currentTrickNumber;
-
-      if (gameState.currentTurnSeat === mySeat) {
-        indicatorText.innerText = "👉 YOUR TURN (Play a card)";
-      } else {
-        indicatorText.innerText = `⏳ ${currentTurnPlayer.name}'s turn...`;
-      }
-    }
-
-    function renderLocalHand() {
-      const dock = document.getElementById('playerHand');
-      dock.innerHTML = '';
-
-      const myHand = gameState.hands[mySeat] || [];
-      const isMyTurn = (gameState.currentTurnSeat === mySeat) && !gameState.isProcessingTrick;
-
-      myHand.forEach((card, index) => {
-        const isRed = card.suit === '♥' || card.suit === '♦';
-        const isPlayable = isMyTurn && isValidPlay(card, myHand, gameState.ledSuit);
-
-        const cardEl = document.createElement('div');
-        let cardClasses = `playing-card ${isRed ? 'red-suit' : 'black-suit'}`;
-        if (card.isKaaliRani) cardClasses += ' kaali-rani-card';
-        if (isPlayable) cardClasses += ' playable';
-        else if (isMyTurn) cardClasses += ' disabled';
-
-        cardEl.className = cardClasses;
-
-        let centerSymbol = card.suit;
-        if (card.rank === 'Q' && card.suit === '♠') centerSymbol = '👑';
-        else if (card.rank === 'K') centerSymbol = '♚';
-        else if (card.rank === 'J') centerSymbol = '♟';
-
-        cardEl.innerHTML = `
-          <div class="card-corner top-left">
-            <span>${card.rank}</span>
-            <span>${card.suit}</span>
-          </div>
-          <div class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black">
-            ${centerSymbol}
-          </div>
-          <div class="card-corner bottom-right">
-            <span>${card.rank}</span>
-            <span>${card.suit}</span>
-          </div>
-        `;
-
-        if (isPlayable) {
-          cardEl.onclick = () => sendPlayCardAction(card);
-        }
-
-        dock.appendChild(cardEl);
-      });
-    }
-
-    function isValidPlay(card, hand, ledSuit) {
-      if (!ledSuit) return true;
-      const hasLedSuit = hand.some(c => c.suit === ledSuit);
-      if (hasLedSuit) {
-        return card.suit === ledSuit;
-      }
-      return true;
-    }
-
-    function sendPlayCardAction(card) {
-      if (isHost) {
-        executePlayCard(mySeat, card);
-      } else if (hostConn && hostConn.open) {
-        hostConn.send({ type: 'ACTION_PLAY_CARD', seat: mySeat, card: card });
-      }
-    }
-
-    function executePlayCard(seat, card) {
-      if (!isHost) return;
-
-      // Remove card from player hand
-      const hand = gameState.hands[seat];
-      const cardIndex = hand.findIndex(c => c.id === card.id);
-      if (cardIndex !== -1) hand.splice(cardIndex, 1);
-
-      if (gameState.currentTrickCards.length === 0) {
-        gameState.ledSuit = card.suit;
-      }
-
-      gameState.currentTrickCards.push({ seat, card });
-
-      if (gameState.currentTrickCards.length === 4) {
-        gameState.isProcessingTrick = true;
-        broadcastGameState();
-        setTimeout(resolveTrickWinner, 1300);
-      } else {
-        gameState.currentTurnSeat = (gameState.currentTurnSeat + 1) % 4;
-        broadcastGameState();
-
-        if (gameState.players[gameState.currentTurnSeat].isBot) {
-          setTimeout(processBotTurn, 800);
-        }
-      }
-    }
-
-    function processBotTurn() {
-      if (!isHost || gameState.isProcessingTrick) return;
-
-      const botSeat = gameState.currentTurnSeat;
-      const botHand = gameState.hands[botSeat];
-      const validCards = botHand.filter(c => isValidPlay(c, botHand, gameState.ledSuit));
-
-      let chosenCard = null;
-
-      if (!gameState.ledSuit) {
-        validCards.sort((a, b) => a.value - b.value);
-        chosenCard = validCards[0];
-      } else {
-        const containsPenalty = gameState.currentTrickCards.some(tc => tc.card.points > 0);
-        const hasLedSuit = botHand.some(c => c.suit === gameState.ledSuit);
-
-        if (hasLedSuit) {
-          const highestLedVal = Math.max(...gameState.currentTrickCards.filter(tc => tc.card.suit === gameState.ledSuit).map(tc => tc.card.value));
-          if (containsPenalty) {
-            const underCards = validCards.filter(c => c.value < highestLedVal);
-            if (underCards.length > 0) {
-              underCards.sort((a, b) => b.value - a.value);
-              chosenCard = underCards[0];
-            } else {
-              validCards.sort((a, b) => b.value - a.value);
-              chosenCard = validCards[0];
+        /**
+         * BROADCAST ROUTER (Star Topology)
+         * Host sends state updates to ALL active guest connections.
+         */
+        function broadcastToAllGuests(data) {
+            // 1. Send via PeerJS connections
+            hostConnections.forEach(conn => {
+                if (conn && conn.open) {
+                    try { conn.send(data); } catch(e) { console.error(e); }
+                }
+            });
+            // 2. Broadcast via BroadcastChannel for instant same-browser multi-tab sync fallback
+            if (localBroadcastChannel) {
+                try { localBroadcastChannel.postMessage(data); } catch(e){}
             }
-          } else {
-            validCards.sort((a, b) => a.value - b.value);
-            chosenCard = validCards[0];
-          }
-        } else {
-          const kaaliRani = validCards.find(c => c.isKaaliRani);
-          if (kaaliRani) {
-            chosenCard = kaaliRani;
-          } else {
-            const hearts = validCards.filter(c => c.isHeart).sort((a, b) => b.value - a.value);
-            if (hearts.length > 0) {
-              chosenCard = hearts[0];
-            } else {
-              validCards.sort((a, b) => b.value - a.value);
-              chosenCard = validCards[0];
+        }
+
+        function sendToHost(data) {
+            if (guestConnection && guestConnection.open) {
+                guestConnection.send(data);
+            } else if (localBroadcastChannel) {
+                localBroadcastChannel.postMessage(data);
             }
-          }
         }
-      }
 
-      executePlayCard(botSeat, chosenCard);
-    }
+        /**
+         * ROOM & PEER SETUP
+         */
+        function initPeerJS(customId = null, callback) {
+            if (myPeer) {
+                myPeer.destroy();
+            }
 
-    function resolveTrickWinner() {
-      if (!isHost) return;
+            myPeer = customId ? new Peer(customId) : new Peer();
 
-      let winningPlay = gameState.currentTrickCards[0];
-      for (let i = 1; i < gameState.currentTrickCards.length; i++) {
-        const play = gameState.currentTrickCards[i];
-        if (play.card.suit === gameState.ledSuit && play.card.value > winningPlay.card.value) {
-          winningPlay = play;
+            myPeer.on('open', (id) => {
+                myPeerId = id;
+                if (callback) callback(id);
+            });
+
+            myPeer.on('connection', (conn) => {
+                if (!isHost) return;
+                
+                // HOST RECEIVES A NEW GUEST
+                conn.on('open', () => {
+                    // Check if space available
+                    const freeSeatIdx = gameState.seats.findIndex(s => !s.id && !s.isHost);
+                    if (freeSeatIdx === -1) {
+                        conn.send({ type: 'ERROR', message: 'Room is full (4 players max).' });
+                        return;
+                    }
+
+                    // Save guest connection
+                    hostConnections.push(conn);
+
+                    // Handle incoming messages from guest
+                    conn.on('data', (data) => handleHostIncomingMessage(data, conn));
+                    conn.on('close', () => handleGuestDisconnect(conn));
+                });
+            });
+
+            myPeer.on('error', (err) => {
+                console.warn('PeerJS note:', err.type);
+                if (err.type === 'unavailable-id') {
+                    showToast('Room Code is unavailable or taken.', 'error');
+                }
+            });
         }
-      }
 
-      const winnerPlayer = gameState.players[winningPlay.seat];
-      let trickPoints = 0;
-
-      gameState.currentTrickCards.forEach(tc => {
-        trickPoints += tc.card.points;
-        if (tc.card.points !== 0) {
-          winnerPlayer.cardsPicked.push(tc.card);
+        function createRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 4; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
         }
-      });
 
-      winnerPlayer.roundScore += trickPoints;
+        function handleStartGroup() {
+            const name = document.getElementById('player-name-input').value.trim() || 'Player 1';
+            roomCode = createRoomCode();
+            isHost = true;
+            mySeatIndex = 0;
 
-      gameState.currentTrickCards = [];
-      gameState.ledSuit = null;
-      gameState.isProcessingTrick = false;
-      gameState.currentTurnSeat = winningPlay.seat;
-      gameState.currentTrickNumber++;
+            const fullPeerId = 'kaali-rani-' + roomCode;
 
-      if (gameState.currentTrickNumber > 13) {
-        endRound();
-      } else {
-        broadcastGameState();
-        if (gameState.players[gameState.currentTurnSeat].isBot) {
-          setTimeout(processBotTurn, 800);
+            // Setup local BroadcastChannel for local tab sync
+            setupBroadcastChannel(roomCode);
+
+            initPeerJS(fullPeerId, (id) => {
+                // Initialize Host Game State
+                gameState.roomCode = roomCode;
+                gameState.status = 'LOBBY';
+                gameState.seats[0] = { id: id, name: name + ' (Host)', isBot: false, isHost: true, hand: [], points: 0, tricksWon: 0, cutCard: null };
+                
+                // Setup default AI bots for empty slots
+                for (let i = 1; i < 4; i++) {
+                    gameState.seats[i] = { id: null, name: `Empty Seat ${i+1}`, isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null };
+                }
+
+                updateUIForLobby();
+            });
         }
-      }
-    }
 
-    function renderTrickSlot(position, card) {
-      const slotMap = { south: 'trickCardSouth', west: 'trickCardWest', north: 'trickCardNorth', east: 'trickCardEast' };
-      const slotEl = document.getElementById(slotMap[position]);
-      if (!slotEl) return;
-
-      slotEl.classList.remove('hidden');
-      const isRed = card.suit === '♥' || card.suit === '♦';
-      let centerSymbol = card.suit;
-      if (card.rank === 'Q' && card.suit === '♠') centerSymbol = '👑';
-
-      slotEl.innerHTML = `
-        <div class="playing-card ${isRed ? 'red-suit' : 'black-suit'} ${card.isKaaliRani ? 'kaali-rani-card' : ''}">
-          <div class="card-corner top-left">
-            <span>${card.rank}</span>
-            <span>${card.suit}</span>
-          </div>
-          <div class="absolute inset-0 flex items-center justify-center text-xl font-black">${centerSymbol}</div>
-          <div class="card-corner bottom-right">
-            <span>${card.rank}</span>
-            <span>${card.suit}</span>
-          </div>
-        </div>
-      `;
-    }
-
-    function clearTrickSlots() {
-      ['trickCardSouth', 'trickCardWest', 'trickCardNorth', 'trickCardEast'].forEach(id => {
-        const slot = document.getElementById(id);
-        if (slot) {
-          slot.classList.add('hidden');
-          slot.innerHTML = '';
+        function showJoinInput() {
+            document.getElementById('join-code-box').classList.remove('hidden');
         }
-      });
-    }
 
-    function endRound() {
-      gameState.status = 'ROUND_END';
+        function handleJoinGroup() {
+            const name = document.getElementById('player-name-input').value.trim() || 'Guest Player';
+            const inputCode = document.getElementById('room-code-input').value.trim().toUpperCase();
 
-      // Moon Shoot check
-      gameState.players.forEach(p => {
-        const hasKaaliRani = p.cardsPicked.some(c => c.isKaaliRani);
-        const heartCount = p.cardsPicked.filter(c => c.isHeart).length;
-        if (hasKaaliRani && heartCount === 13) {
-          p.roundScore = 0;
-          gameState.players.forEach(o => {
-            if (o.seat !== p.seat) o.roundScore = 26;
-          });
+            if (inputCode.length !== 4) {
+                showToast('Please enter a valid 4-character Room Code.', 'error');
+                return;
+            }
+
+            roomCode = inputCode;
+            isHost = false;
+
+            setupBroadcastChannel(roomCode);
+
+            initPeerJS(null, (myId) => {
+                const targetHostPeerId = 'kaali-rani-' + roomCode;
+                guestConnection = myPeer.connect(targetHostPeerId);
+
+                guestConnection.on('open', () => {
+                    // Send Join Request
+                    guestConnection.send({
+                        type: 'JOIN_REQUEST',
+                        playerName: name,
+                        peerId: myId
+                    });
+                });
+
+                guestConnection.on('data', (data) => handleGuestIncomingMessage(data));
+
+                guestConnection.on('close', () => {
+                    showToast('Disconnected from Host.', 'error');
+                });
+            });
         }
-      });
 
-      gameState.players.forEach(p => p.totalScore += p.roundScore);
-      broadcastGameState();
-    }
+        function setupBroadcastChannel(code) {
+            if (localBroadcastChannel) localBroadcastChannel.close();
+            localBroadcastChannel = new BroadcastChannel('kaali_rani_channel_' + code);
+            localBroadcastChannel.onmessage = (event) => {
+                const data = event.data;
+                if (isHost) {
+                    handleHostIncomingMessage(data, null);
+                } else {
+                    handleGuestIncomingMessage(data);
+                }
+            };
+        }
 
-    function renderRoundSummary() {
-      const tbody = document.getElementById('roundScoresTable');
-      tbody.innerHTML = gameState.players.map(p => {
-        const pickedText = p.cardsPicked.map(c => c.rank + c.suit).join(' ') || 'None';
-        return `
-          <tr class="border-b border-slate-800">
-            <td class="p-3 font-bold text-slate-200">${p.name}</td>
-            <td class="p-3 text-[11px] text-amber-300 max-w-[120px] truncate">${pickedText}</td>
-            <td class="p-3 text-right font-bold ${p.roundScore > 0 ? 'text-rose-400' : 'text-emerald-400'}">${p.roundScore > 0 ? '+' : ''}${p.roundScore}</td>
-            <td class="p-3 text-right font-extrabold text-amber-400">${p.totalScore}</td>
-          </tr>
-        `;
-      }).join('');
+        function handleHostIncomingMessage(data, conn) {
+            if (!isHost) return;
 
-      document.getElementById('roundSummaryModal').classList.remove('hidden');
+            switch(data.type) {
+                case 'JOIN_REQUEST':
+                    // Find empty seat
+                    const emptySeatIdx = gameState.seats.findIndex(s => !s.id && !s.isHost);
+                    if (emptySeatIdx !== -1) {
+                        gameState.seats[emptySeatIdx] = {
+                            id: data.peerId,
+                            name: data.playerName,
+                            isBot: false,
+                            isHost: false,
+                            hand: [],
+                            points: 0,
+                            tricksWon: 0,
+                            cutCard: null
+                        };
 
-      const isGameOver = gameState.players.some(p => p.totalScore >= 52);
-      if (isGameOver) {
-        gameState.status = 'GAME_OVER';
-        if (isHost) broadcastGameState();
-      }
-    }
+                        // Send welcome & assigned seat to newcomer
+                        if (conn && conn.open) {
+                            conn.send({
+                                type: 'JOIN_SUCCESS',
+                                seatIndex: emptySeatIdx,
+                                gameState: gameState
+                            });
+                        }
 
-    function requestNextRound() {
-      if (gameState.status === 'GAME_OVER') {
-        renderGameOver();
-      } else if (isHost) {
-        startNextRound();
-      } else if (hostConn) {
-        hostConn.send({ type: 'ACTION_NEXT_ROUND' });
-      }
-    }
+                        // CRITICAL FIX #1: Broadcast full lobby state to ALL guests
+                        broadcastToAllGuests({
+                            type: 'LOBBY_UPDATE',
+                            gameState: gameState
+                        });
 
-    function renderGameOver() {
-      document.getElementById('roundSummaryModal').classList.add('hidden');
+                        updateLobbyUI();
+                    }
+                    break;
 
-      const ranked = [...gameState.players].sort((a, b) => a.totalScore - b.totalScore);
-      const winner = ranked[0];
+                case 'CLIENT_ACTION_PLAY_CARD':
+                    if (gameState.currentTurn === data.seatIndex) {
+                        playCard(data.seatIndex, data.cardIndex);
+                    }
+                    break;
 
-      document.getElementById('winnerAnnouncement').innerText = `🎉 ${winner.name} wins the match with ${winner.totalScore} points!`;
+                case 'CLIENT_ACTION_DEAL':
+                    if (gameState.status === 'CUT_CARD' && (gameState.distributorIndex === data.seatIndex || isHost)) {
+                        dealFullHands();
+                    }
+                    break;
+            }
+        }
 
-      const rankContainer = document.getElementById('finalRankings');
-      rankContainer.innerHTML = ranked.map((p, idx) => `
-        <div class="flex items-center justify-between p-2.5 rounded-xl ${idx === 0 ? 'bg-amber-500/20 border border-amber-500/60' : 'bg-slate-900/60'}">
-          <div class="flex items-center gap-2">
-            <span class="font-extrabold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</span>
-            <span class="font-bold text-slate-200">${p.name}</span>
-          </div>
-          <span class="font-black text-amber-400">${p.totalScore} pts</span>
-        </div>
-      `).join('');
+        function handleGuestIncomingMessage(data) {
+            switch(data.type) {
+                case 'JOIN_SUCCESS':
+                    mySeatIndex = data.seatIndex;
+                    gameState = data.gameState;
+                    updateUIForLobby();
+                    showToast(`Joined as Seat ${mySeatIndex + 1}`, 'success');
+                    break;
 
-      document.getElementById('gameOverModal').classList.remove('hidden');
-    }
+                case 'LOBBY_UPDATE':
+                    gameState = data.gameState;
+                    updateLobbyUI();
+                    break;
 
-    function resetFullMatch() {
-      document.getElementById('gameOverModal').classList.add('hidden');
-      if (isHost) startNewMatch();
-    }
-  </script>
+                case 'GAME_START_CUT':
+                    gameState = data.gameState;
+                    mySeatIndex = data.assignedSeatIndex !== undefined ? data.assignedSeatIndex : mySeatIndex;
+                    transitionToCutCardPhase();
+                    break;
+
+                case 'HANDS_DEALT':
+                    gameState = data.gameState;
+                    transitionToPlayingPhase();
+                    break;
+
+                case 'CARD_PLAYED_UPDATE':
+                    gameState = data.gameState;
+                    renderTableAndHand();
+                    break;
+
+                case 'ERROR':
+                    showToast(data.message, 'error');
+                    break;
+            }
+        }
+
+        function handleGuestDisconnect(conn) {
+            if (!isHost) return;
+            hostConnections = hostConnections.filter(c => c !== conn);
+            // Replace disconnected seat with empty
+            gameState.seats.forEach((seat, idx) => {
+                if (seat.id === conn.peer) {
+                    gameState.seats[idx] = { id: null, name: `Empty Seat ${idx+1}`, isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null };
+                }
+            });
+            broadcastToAllGuests({ type: 'LOBBY_UPDATE', gameState: gameState });
+            updateLobbyUI();
+        }
+
+        function updateUIForLobby() {
+            document.getElementById('header-room-badge').classList.remove('hidden');
+            document.getElementById('header-room-code').innerText = roomCode;
+            document.getElementById('lobby-entry-step').classList.add('hidden');
+            document.getElementById('lobby-room-step').classList.remove('hidden');
+            document.getElementById('lobby-code-display').innerText = roomCode;
+
+            if (isHost) {
+                document.getElementById('host-lobby-actions').classList.remove('hidden');
+                document.getElementById('guest-lobby-actions').classList.add('hidden');
+            } else {
+                document.getElementById('host-lobby-actions').classList.add('hidden');
+                document.getElementById('guest-lobby-actions').classList.remove('hidden');
+            }
+
+            updateLobbyUI();
+        }
+
+        function updateLobbyUI() {
+            const seatsList = document.getElementById('lobby-seats-list');
+            seatsList.innerHTML = '';
+
+            let filledCount = 0;
+
+            gameState.seats.forEach((seat, idx) => {
+                const isOccupied = seat.id !== null || seat.isHost;
+                if (isOccupied) filledCount++;
+
+                const isMe = idx === mySeatIndex;
+                
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border ${isOccupied ? 'bg-slate-800 border-amber-500/40' : 'bg-slate-950/60 border-slate-800'} flex items-center justify-between`;
+                
+                card.innerHTML = `
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-8 h-8 rounded-full ${isOccupied ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-500'} font-bold flex items-center justify-center text-xs">
+                            ${idx + 1}
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-200">${seat.name} ${isMe ? '(You)' : ''}</div>
+                            <div class="text-[10px] text-slate-400">${seat.isHost ? 'Room Host' : (isOccupied ? 'Player' : 'Will be AI Bot')}</div>
+                        </div>
+                    </div>
+                    ${seat.isHost ? '<span class="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">HOST</span>' : ''}
+                `;
+                seatsList.appendChild(card);
+            });
+
+            document.getElementById('lobby-count-tag').innerText = `${filledCount} / 4 Players`;
+        }
+
+        /**
+         * REQUIREMENT #3: DISTRIBUTOR CUT CARD SETUP
+         */
+        function handleHostStartGame() {
+            if (!isHost) return;
+
+            // Fill empty human seats with AI Bots
+            gameState.seats.forEach((seat, idx) => {
+                if (!seat.id && !seat.isHost) {
+                    gameState.seats[idx] = {
+                        id: 'bot-' + idx,
+                        name: `Bot ${['Alpha', 'Beta', 'Gamma', 'Delta'][idx]}`,
+                        isBot: true,
+                        isHost: false,
+                        hand: [],
+                        points: 0,
+                        tricksWon: 0,
+                        cutCard: null
+                    };
+                }
+            });
+
+            // Generate Cut Cards for all 4 seats to find Distributor
+            const cutDeck = createDeck();
+            shuffleDeck(cutDeck);
+
+            let highestRank = -1;
+            let winningSeatIdx = 0;
+
+            gameState.seats.forEach((seat, idx) => {
+                const card = cutDeck.pop();
+                seat.cutCard = card;
+                if (card.val > highestRank) {
+                    highestRank = card.val;
+                    winningSeatIdx = idx;
+                }
+            });
+
+            gameState.distributorIndex = winningSeatIdx;
+            gameState.status = 'CUT_CARD';
+
+            // CRITICAL FIX #2: Broadcast GAME_START_CUT to all guests simultaneously
+            hostConnections.forEach((conn) => {
+                // Find guest's seat index
+                const guestSeatIdx = gameState.seats.findIndex(s => s.id === conn.peer);
+                conn.send({
+                    type: 'GAME_START_CUT',
+                    assignedSeatIndex: guestSeatIdx,
+                    gameState: gameState
+                });
+            });
+
+            if (localBroadcastChannel) {
+                localBroadcastChannel.postMessage({
+                    type: 'GAME_START_CUT',
+                    gameState: gameState
+                });
+            }
+
+            transitionToCutCardPhase();
+        }
+
+        function transitionToCutCardPhase() {
+            document.getElementById('modal-lobby').classList.add('hidden');
+            document.getElementById('modal-scores').classList.add('hidden');
+            document.getElementById('modal-distributor').classList.remove('hidden');
+
+            const grid = document.getElementById('cut-cards-grid');
+            grid.innerHTML = '';
+
+            gameState.seats.forEach((seat, idx) => {
+                const cardObj = seat.cutCard;
+                const suitInfo = SUITS[cardObj.suit];
+                
+                const cardEl = document.createElement('div');
+                cardEl.className = 'bg-slate-950 border border-slate-700 rounded-xl p-3 flex flex-col items-center justify-center space-y-2 shadow-inner';
+                cardEl.innerHTML = `
+                    <span class="text-xs text-slate-400 font-semibold truncate w-full text-center">${seat.name}</span>
+                    <div class="w-16 h-24 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border-2 ${seat.cutCard ? 'border-amber-400' : 'border-slate-300'}">
+                        <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
+                        <div class="text-center text-2xl ${suitInfo.color}">${suitInfo.symbol}</div>
+                        <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
+                    </div>
+                `;
+                grid.appendChild(cardEl);
+            });
+
+            const winnerSeat = gameState.seats[gameState.distributorIndex];
+            const banner = document.getElementById('cut-result-banner');
+            const winnerText = document.getElementById('distributor-winner-text');
+            
+            banner.classList.remove('hidden');
+            winnerText.innerText = `👑 ${winnerSeat.name} drew the highest card (${winnerSeat.cutCard.code}${SUITS[winnerSeat.cutCard.suit].symbol}) and is the Distributor!`;
+
+            const isDistributor = (mySeatIndex === gameState.distributorIndex);
+            const dealBtn = document.getElementById('deal-hands-btn');
+            const waitText = document.getElementById('distributor-wait-text');
+
+            if (isDistributor || (isHost && winnerSeat.isBot)) {
+                dealBtn.classList.remove('hidden');
+                waitText.classList.add('hidden');
+            } else {
+                dealBtn.classList.add('hidden');
+                waitText.classList.remove('hidden');
+            }
+        }
+
+        function handleStartDealing() {
+            if (isHost) {
+                dealFullHands();
+            } else {
+                sendToHost({ type: 'CLIENT_ACTION_DEAL', seatIndex: mySeatIndex });
+            }
+        }
+
+        function dealFullHands() {
+            if (!isHost) return;
+
+            const fullDeck = createDeck();
+            shuffleDeck(fullDeck);
+
+            // Deal 13 cards to each of the 4 players
+            for (let i = 0; i < 4; i++) {
+                gameState.seats[i].hand = fullDeck.splice(0, 13);
+                // Sort hand by Suit and Value
+                sortHand(gameState.seats[i].hand);
+                gameState.seats[i].points = 0;
+                gameState.seats[i].tricksWon = 0;
+            }
+
+            // Lead starts with player to left of Distributor
+            gameState.currentTurn = (gameState.distributorIndex + 1) % 4;
+            gameState.leadSuit = null;
+            gameState.currentTrick = [];
+            gameState.completedTricks = 0;
+            gameState.status = 'PLAYING';
+
+            broadcastToAllGuests({
+                type: 'HANDS_DEALT',
+                gameState: gameState
+            });
+
+            transitionToPlayingPhase();
+        }
+
+        function transitionToPlayingPhase() {
+            document.getElementById('modal-distributor').classList.add('hidden');
+            document.getElementById('score-btn').classList.remove('hidden');
+            document.getElementById('leave-btn').classList.remove('hidden');
+            
+            renderTableAndHand();
+
+            // Trigger AI if it's AI turn
+            if (isHost && gameState.seats[gameState.currentTurn].isBot) {
+                setTimeout(processAITurn, 1000);
+            }
+        }
+
+        function createDeck() {
+            const deck = [];
+            Object.keys(SUITS).forEach(suitKey => {
+                RANKS.forEach(rank => {
+                    const isKaaliRani = (suitKey === 'SPADES' && rank.code === 'Q');
+                    deck.push({
+                        suit: suitKey,
+                        rank: rank.code,
+                        val: rank.val,
+                        code: rank.code,
+                        isKaaliRani: isKaaliRani
+                    });
+                });
+            });
+            return deck;
+        }
+
+        function shuffleDeck(deck) {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        function sortHand(hand) {
+            const suitOrder = { 'SPADES': 0, 'HEARTS': 1, 'CLUBS': 2, 'DIAMONDS': 3 };
+            hand.sort((a, b) => {
+                if (suitOrder[a.suit] !== suitOrder[b.suit]) {
+                    return suitOrder[a.suit] - suitOrder[b.suit];
+                }
+                return b.val - a.val;
+            });
+        }
+
+        /**
+         * SEAT ROTATION HELPERS
+         * Maps actual seat index (0..3) to relative visual position for local user (South = Me)
+         */
+        function getVisualPosition(actualSeatIdx) {
+            const relIndex = (actualSeatIdx - mySeatIndex + 4) % 4;
+            return ['south', 'west', 'north', 'east'][relIndex];
+        }
+
+        function renderTableAndHand() {
+            // Render Seats Info
+            ['south', 'west', 'north', 'east'].forEach(pos => {
+                document.getElementById(`distributor-${pos}`).classList.add('hidden');
+            });
+
+            gameState.seats.forEach((seat, actualIdx) => {
+                const pos = getVisualPosition(actualIdx);
+                
+                document.getElementById(`name-${pos}`).innerText = seat.name;
+                document.getElementById(`pts-${pos}`).innerText = seat.points;
+
+                if (pos !== 'south') {
+                    document.getElementById(`cards-count-${pos}`).innerText = seat.hand.length;
+                }
+
+                if (actualIdx === gameState.distributorIndex) {
+                    document.getElementById(`distributor-${pos}`).classList.remove('hidden');
+                }
+
+                // Highlight active turn player
+                const seatContainer = document.getElementById(`seat-${pos}`);
+                if (actualIdx === gameState.currentTurn) {
+                    seatContainer.classList.add('ring-2', 'ring-amber-400', 'shadow-amber-500/30');
+                } else {
+                    seatContainer.classList.remove('ring-2', 'ring-amber-400', 'shadow-amber-500/30');
+                }
+            });
+
+            // Update Status Banner
+            const activePlayerName = gameState.seats[gameState.currentTurn].name;
+            document.getElementById('status-text').innerText = `${activePlayerName}'s turn to play`;
+
+            // Render Center Trick Arena
+            renderCenterTrick();
+
+            // Render South (Local User) Hand
+            renderLocalPlayerHand();
+        }
+
+        function renderCenterTrick() {
+            ['south', 'west', 'north', 'east'].forEach(pos => {
+                const slot = document.getElementById(`trick-slot-${pos}`);
+                slot.innerHTML = '';
+            });
+
+            gameState.currentTrick.forEach(play => {
+                const pos = getVisualPosition(play.seatIndex);
+                const slot = document.getElementById(`trick-slot-${pos}`);
+                
+                const cardObj = play.card;
+                const suitInfo = SUITS[cardObj.suit];
+
+                const cardEl = document.createElement('div');
+                cardEl.className = `w-16 h-24 md:w-20 md:h-28 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border ${cardObj.isKaaliRani ? 'kaali-rani-glow' : 'border-slate-300'}`;
+                cardEl.innerHTML = `
+                    <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
+                    <div class="text-center text-2xl ${suitInfo.color}">${cardObj.isKaaliRani ? '👑' : suitInfo.symbol}</div>
+                    <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
+                `;
+                slot.appendChild(cardEl);
+            });
+        }
+
+        function renderLocalPlayerHand() {
+            const container = document.getElementById('player-hand-container');
+            container.innerHTML = '';
+
+            const myHand = gameState.seats[mySeatIndex].hand || [];
+            const isMyTurn = (gameState.currentTurn === mySeatIndex);
+
+            // Check if user must follow lead suit
+            const hasLeadSuit = gameState.leadSuit ? myHand.some(c => c.suit === gameState.leadSuit) : false;
+
+            myHand.forEach((cardObj, idx) => {
+                const suitInfo = SUITS[cardObj.suit];
+                const canPlay = isMyTurn && (!gameState.leadSuit || !hasLeadSuit || cardObj.suit === gameState.leadSuit);
+
+                const cardBtn = document.createElement('button');
+                cardBtn.className = `relative w-16 h-24 md:w-20 md:h-28 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border card-3d-hover focus:outline-none ${cardObj.isKaaliRani ? 'kaali-rani-glow ring-2 ring-purple-500' : 'border-slate-300'} ${!canPlay ? 'opacity-50 grayscale hover:translate-y-0 cursor-not-allowed' : 'cursor-pointer hover:border-amber-400'}`;
+                
+                cardBtn.onclick = () => {
+                    if (canPlay) handlePlayCard(idx);
+                };
+
+                cardBtn.innerHTML = `
+                    <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
+                    <div class="text-center text-2xl md:text-3xl ${suitInfo.color}">${cardObj.isKaaliRani ? '👑' : suitInfo.symbol}</div>
+                    <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
+                `;
+
+                container.appendChild(cardBtn);
+            });
+        }
+
+        function handlePlayCard(cardIndex) {
+            if (isHost) {
+                playCard(mySeatIndex, cardIndex);
+            } else {
+                sendToHost({
+                    type: 'CLIENT_ACTION_PLAY_CARD',
+                    seatIndex: mySeatIndex,
+                    cardIndex: cardIndex
+                });
+            }
+        }
+
+        function playCard(seatIndex, cardIndex) {
+            if (!isHost) return;
+
+            const player = gameState.seats[seatIndex];
+            const playedCard = player.hand.splice(cardIndex, 1)[0];
+
+            if (!gameState.leadSuit) {
+                gameState.leadSuit = playedCard.suit;
+            }
+
+            gameState.currentTrick.push({
+                card: playedCard,
+                seatIndex: seatIndex
+            });
+
+            // Move turn to next clockwise player
+            gameState.currentTurn = (seatIndex + 1) % 4;
+
+            // Broadcast move update immediately
+            broadcastToAllGuests({
+                type: 'CARD_PLAYED_UPDATE',
+                gameState: gameState
+            });
+
+            renderTableAndHand();
+
+            // Check if trick is complete (4 cards played)
+            if (gameState.currentTrick.length === 4) {
+                setTimeout(evaluateTrickWinner, 1200);
+            } else {
+                // Trigger AI if next turn is AI
+                if (gameState.seats[gameState.currentTurn].isBot) {
+                    setTimeout(processAITurn, 1000);
+                }
+            }
+        }
+
+        function evaluateTrickWinner() {
+            if (!isHost) return;
+
+            let winnerSeatIdx = gameState.currentTrick[0].seatIndex;
+            let highestVal = -1;
+            let trickPoints = 0;
+
+            gameState.currentTrick.forEach(play => {
+                const card = play.card;
+                
+                // Kaali Rani (Q♠) = 50 penalty points!
+                if (card.isKaaliRani) {
+                    trickPoints += 50;
+                } else if (card.suit === 'HEARTS') {
+                    trickPoints += 1; // Hearts = 1 point each
+                }
+
+                // Check highest card matching lead suit
+                if (card.suit === gameState.leadSuit && card.val > highestVal) {
+                    highestVal = card.val;
+                    winnerSeatIdx = play.seatIndex;
+                }
+            });
+
+            // Assign trick & points to winner
+            gameState.seats[winnerSeatIdx].tricksWon += 1;
+            gameState.seats[winnerSeatIdx].points += trickPoints;
+
+            const winnerName = gameState.seats[winnerSeatIdx].name;
+            showToast(`${winnerName} won the trick! (${trickPoints} pts)`, 'info');
+
+            // Reset for next trick
+            gameState.currentTrick = [];
+            gameState.leadSuit = null;
+            gameState.currentTurn = winnerSeatIdx;
+            gameState.completedTricks += 1;
+
+            if (gameState.completedTricks === 13) {
+                gameState.status = 'ROUND_OVER';
+                broadcastToAllGuests({ type: 'CARD_PLAYED_UPDATE', gameState: gameState });
+                renderTableAndHand();
+                setTimeout(showRoundOverScores, 1000);
+            } else {
+                broadcastToAllGuests({ type: 'CARD_PLAYED_UPDATE', gameState: gameState });
+                renderTableAndHand();
+
+                if (gameState.seats[gameState.currentTurn].isBot) {
+                    setTimeout(processAITurn, 1000);
+                }
+            }
+        }
+
+        function processAITurn() {
+            if (!isHost) return;
+
+            const botSeatIdx = gameState.currentTurn;
+            const bot = gameState.seats[botSeatIdx];
+
+            if (!bot.isBot || bot.hand.length === 0) return;
+
+            // Filter valid playable cards
+            const hasLeadSuit = gameState.leadSuit ? bot.hand.some(c => c.suit === gameState.leadSuit) : false;
+            
+            let playableIndices = [];
+            bot.hand.forEach((card, idx) => {
+                if (!gameState.leadSuit || !hasLeadSuit || card.suit === gameState.leadSuit) {
+                    playableIndices.push(idx);
+                }
+            });
+
+            // AI Card Selection Strategy
+            let chosenIndex = playableIndices[0];
+
+            // If void in lead suit, dump Kaali Rani if in hand!
+            if (gameState.leadSuit && !hasLeadSuit) {
+                const kaaliIdx = bot.hand.findIndex(c => c.isKaaliRani);
+                if (kaaliIdx !== -1) chosenIndex = kaaliIdx;
+            }
+
+            playCard(botSeatIdx, chosenIndex);
+        }
+
+        function showRoundOverScores() {
+            const list = document.getElementById('score-rows-list');
+            list.innerHTML = '';
+
+            // Find lowest points (In Kaali Rani, lowest score wins!)
+            let minPoints = Infinity;
+            gameState.seats.forEach(s => {
+                if (s.points < minPoints) minPoints = s.points;
+            });
+
+            gameState.seats.forEach(seat => {
+                const isWinner = seat.points === minPoints;
+                const row = document.createElement('div');
+                row.className = `p-3 rounded-xl border flex items-center justify-between ${isWinner ? 'bg-amber-500/20 border-amber-500' : 'bg-slate-950 border-slate-800'}`;
+                row.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-bold text-slate-200">${seat.name}</span>
+                        ${isWinner ? '<span class="text-xs bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">WINNER</span>' : ''}
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-slate-400">Tricks: ${seat.tricksWon} | </span>
+                        <span class="text-sm font-mono font-bold ${seat.points > 0 ? 'text-red-400' : 'text-emerald-400'}">${seat.points} Pts</span>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+
+            if (isHost) {
+                document.getElementById('round-over-actions').classList.remove('hidden');
+            }
+
+            document.getElementById('modal-scores').classList.remove('hidden');
+        }
+
+        function toggleScoreModal() {
+            const modal = document.getElementById('modal-scores');
+            modal.classList.toggle('hidden');
+        }
+
+        function copyRoomCode() {
+            navigator.clipboard.writeText(roomCode);
+            showToast('Room Code copied to clipboard!', 'success');
+        }
+
+        function leaveRoom() {
+            window.location.reload();
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === 'error' ? 'bg-red-950 border-red-600 text-red-200' :
+                            type === 'success' ? 'bg-emerald-950 border-emerald-600 text-emerald-200' :
+                            'bg-slate-900 border-amber-500/50 text-amber-300';
+
+            toast.className = `px-4 py-3 rounded-xl border text-xs font-semibold shadow-2xl flex items-center space-x-2 backdrop-blur transition-all duration-300 transform translate-y-2`;
+            toast.classList.add(...bgClass.split(' '));
+            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
 </body>
 </html>
