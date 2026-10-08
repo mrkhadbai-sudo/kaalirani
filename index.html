@@ -1,1204 +1,427 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-slate-950 text-slate-100">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaali Rani - P2P Multiplayer Card Game</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PeerJS for P2P Networking -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <!-- Font Awesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        felt: {
-                            800: '#064e3b',
-                            900: '#022c22',
-                            950: '#011711',
-                        },
-                        gold: {
-                            400: '#fbbf24',
-                            500: '#f59e0b',
-                            600: '#d97706',
-                        }
-                    },
-                    fontFamily: {
-                        serif: ['Cinzel', 'serif'],
-                        sans: ['Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        /* Custom card and ambient effects */
-        .card-shadow {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
-        }
-        .kaali-rani-glow {
-            box-shadow: 0 0 15px rgba(168, 85, 247, 0.8), 0 0 30px rgba(168, 85, 247, 0.4);
-            border: 2px solid #c084fc !important;
-        }
-        .felt-texture {
-            background-color: #043d2e;
-            background-image: radial-gradient(#065f46 1px, transparent 1px), radial-gradient(#022c22 1px, #043d2e 1px);
-            background-size: 20px 20px;
-            background-position: 0 0, 10px 10px;
-        }
-        .card-3d-hover {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .card-3d-hover:hover {
-            transform: translateY(-16px) scale(1.05);
-            z-index: 30;
-        }
-        /* Custom scrollbar for hand on smaller screens */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kaali Rani - P2P Multiplayer Card Game</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config={theme:{extend:{fontFamily:{serif:['Cinzel','serif'],sans:['Inter','sans-serif']}}}}
+</script>
+<style>
+.card-shadow{box-shadow:0 4px 12px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.2)}
+.kr-glow{box-shadow:0 0 15px rgba(168,85,247,.8),0 0 30px rgba(168,85,247,.4);border:2px solid #c084fc!important}
+.felt{background-color:#043d2e;background-image:radial-gradient(#065f46 1px,transparent 1px);background-size:20px 20px}
+.card-hover{transition:transform .2s}
+.card-hover:not(:disabled):hover{transform:translateY(-16px) scale(1.05);z-index:30}
+.no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{scrollbar-width:none}
+</style>
 </head>
 <body class="h-full flex flex-col font-sans overflow-hidden select-none bg-slate-950 text-slate-100">
+<div id="toasts" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <!-- Toast Notification Overlay -->
-    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
-
-    <!-- MAIN APP WRAPPER -->
-    <div class="relative flex-1 flex flex-col h-full felt-texture overflow-hidden">
-        
-        <!-- Top Navigation / Status Header -->
-        <header class="h-14 bg-slate-950/80 backdrop-blur-md border-b border-emerald-800/40 px-4 flex items-center justify-between z-20">
-            <div class="flex items-center space-x-3">
-                <span class="font-serif text-xl font-bold tracking-wider text-amber-400 flex items-center gap-2">
-                    <i class="fa-solid font-normal fa-crown text-amber-400"></i> KAALI RANI
-                </span>
-                <span id="header-room-badge" class="hidden text-xs px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 font-mono">
-                    ROOM: <span id="header-room-code" class="font-bold text-amber-300">----</span>
-                </span>
-            </div>
-
-            <div id="game-status-banner" class="hidden md:flex items-center text-sm font-medium text-slate-300 bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700/60 shadow-inner">
-                <span id="status-text">Welcome to Kaali Rani</span>
-            </div>
-
-            <div class="flex items-center space-x-2">
-                <button id="score-btn" onclick="toggleScoreModal()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-200 border border-emerald-700/50 transition">
-                    <i class="fa-solid fa-list-ol mr-1"></i> Scores
-                </button>
-                <button id="leave-btn" onclick="leaveRoom()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/40 transition">
-                    <i class="fa-solid fa-door-open mr-1"></i> Exit
-                </button>
-            </div>
-        </header>
-
-        <!-- FELT GAME TABLE CANVAS -->
-        <main id="game-table" class="relative flex-1 flex flex-col justify-between p-2 md:p-6 max-w-7xl mx-auto w-full">
-            
-            <!-- NORTH SEAT (Opponent Top) -->
-            <div class="flex justify-center z-10">
-                <div id="seat-north" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-4 py-2 flex items-center space-x-3 shadow-lg min-w-[180px]">
-                    <div class="relative">
-                        <div id="avatar-north" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
-                            N
-                        </div>
-                        <span id="distributor-north" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
-                    </div>
-                    <div class="flex-1">
-                        <div id="name-north" class="text-xs font-semibold text-slate-200 max-w-[100px] truncate">Empty</div>
-                        <div class="flex items-center space-x-2 text-[11px] text-slate-400">
-                            <span>Cards: <strong id="cards-count-north" class="text-emerald-400">0</strong></span>
-                            <span>Pts: <strong id="pts-north" class="text-amber-400">0</strong></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- MIDDLE SECTION: WEST, CENTER TRICK, EAST -->
-            <div class="flex-1 flex items-center justify-between my-2 relative">
-                
-                <!-- WEST SEAT (Left Opponent) -->
-                <div class="z-10">
-                    <div id="seat-west" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 shadow-lg min-w-[160px]">
-                        <div class="relative">
-                            <div id="avatar-west" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
-                                W
-                            </div>
-                            <span id="distributor-west" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
-                        </div>
-                        <div class="flex-1">
-                            <div id="name-west" class="text-xs font-semibold text-slate-200 max-w-[90px] truncate">Empty</div>
-                            <div class="text-[11px] text-slate-400">Cards: <strong id="cards-count-west" class="text-emerald-400">0</strong></div>
-                            <div class="text-[11px] text-slate-400">Pts: <strong id="pts-west" class="text-amber-400">0</strong></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TRICK PLAY AREA (CENTER OF TABLE) -->
-                <div class="absolute inset-0 m-auto w-64 h-64 md:w-80 md:h-80 rounded-full border border-emerald-500/20 bg-emerald-950/20 backdrop-blur-xs flex items-center justify-center shadow-2xl">
-                    <div class="relative w-full h-full flex items-center justify-center">
-                        
-                        <!-- Trick Slot: North -->
-                        <div id="trick-slot-north" class="absolute top-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
-                        
-                        <!-- Trick Slot: West -->
-                        <div id="trick-slot-west" class="absolute left-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
-                        
-                        <!-- Trick Slot: East -->
-                        <div id="trick-slot-east" class="absolute right-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
-                        
-                        <!-- Trick Slot: South (Me) -->
-                        <div id="trick-slot-south" class="absolute bottom-2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30 flex items-center justify-center transition-all duration-300"></div>
-
-                        <!-- Center Trick Indicator Text -->
-                        <div id="center-trick-status" class="text-center p-2 rounded-lg bg-slate-950/70 backdrop-blur border border-amber-500/30 pointer-events-none hidden max-w-[180px]">
-                            <p id="trick-status-title" class="text-[11px] text-amber-300 font-semibold uppercase tracking-wider">Current Trick</p>
-                            <p id="trick-status-desc" class="text-xs text-slate-200 mt-0.5">Waiting for lead...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- EAST SEAT (Right Opponent) -->
-                <div class="z-10">
-                    <div id="seat-east" class="seat-card bg-slate-900/85 backdrop-blur border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 shadow-lg min-w-[160px]">
-                        <div class="flex-1 text-right">
-                            <div id="name-east" class="text-xs font-semibold text-slate-200 max-w-[90px] truncate ml-auto">Empty</div>
-                            <div class="text-[11px] text-slate-400">Cards: <strong id="cards-count-east" class="text-emerald-400">0</strong></div>
-                            <div class="text-[11px] text-slate-400">Pts: <strong id="pts-east" class="text-amber-400">0</strong></div>
-                        </div>
-                        <div class="relative">
-                            <div id="avatar-east" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">
-                                E
-                            </div>
-                            <span id="distributor-east" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">D</span>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- SOUTH SEAT & HAND DOCK (Local Player) -->
-            <div class="z-20 flex flex-col items-center w-full">
-                
-                <!-- Local Player Information Pill -->
-                <div id="seat-south" class="mb-2 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-full px-5 py-1.5 flex items-center space-x-4 shadow-xl">
-                    <div class="relative flex items-center space-x-2">
-                        <div id="avatar-south" class="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-sm border border-amber-300">
-                            YOU
-                        </div>
-                        <span id="name-south" class="text-xs font-bold text-slate-100">You</span>
-                        <span id="distributor-south" class="hidden bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow">DISTRIBUTOR</span>
-                    </div>
-                    <div class="h-4 w-px bg-slate-700"></div>
-                    <div class="text-xs text-slate-300">
-                        Points Captured: <strong id="pts-south" class="text-amber-400 font-bold">0</strong>
-                    </div>
-                </div>
-
-                <!-- 13 CARD HAND DOCK -->
-                <div class="relative w-full max-w-4xl min-h-[140px] flex justify-center items-end pb-2">
-                    <div id="player-hand-container" class="flex justify-center items-end -space-x-8 md:-space-x-10 hover:-space-x-6 transition-all duration-300 px-4 py-2 overflow-x-auto max-w-full no-scrollbar">
-                        <!-- Card elements injected dynamically -->
-                        <div class="text-slate-400 text-sm italic py-8">Waiting to join or start game...</div>
-                    </div>
-                </div>
-
-            </div>
-        </main>
+<div class="relative flex-1 flex flex-col h-full felt overflow-hidden">
+  <header class="h-14 bg-slate-950/80 backdrop-blur-md border-b border-emerald-800/40 px-4 flex items-center justify-between z-20">
+    <div class="flex items-center space-x-3">
+      <span class="font-serif text-xl font-bold tracking-wider text-amber-400"><i class="fa-solid fa-crown"></i> KAALI RANI</span>
+      <span id="hdr-room" class="hidden text-xs px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 font-mono">ROOM: <b id="hdr-code" class="text-amber-300"></b></span>
     </div>
+    <div class="hidden md:block text-sm text-slate-300 bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700/60"><span id="status-text">Welcome to Kaali Rani</span></div>
+    <div class="flex items-center space-x-2">
+      <button id="score-btn" onclick="toggleScores()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-900/50 text-emerald-200 border border-emerald-700/50"><i class="fa-solid fa-list-ol mr-1"></i> Scores</button>
+      <button id="leave-btn" onclick="location.reload()" class="hidden px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-950/50 text-red-300 border border-red-800/40"><i class="fa-solid fa-door-open mr-1"></i> Exit</button>
+    </div>
+  </header>
 
-    <!-- MODAL 1: LOBBY & ENTRY SETUP -->
-    <div id="modal-lobby" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 max-w-xl w-full shadow-2xl relative">
-            
-            <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-3xl mb-3">
-                    <i class="fa-solid fa-crown"></i>
-                </div>
-                <h1 class="text-2xl md:text-3xl font-serif font-bold text-amber-400 tracking-wide">KAALI RANI</h1>
-                <p class="text-slate-400 text-xs md:text-sm mt-1">Real-time P2P Trick-Taking Card Game (Queen of Spades)</p>
-            </div>
+  <main class="relative flex-1 flex flex-col justify-between p-2 md:p-6 max-w-7xl mx-auto w-full">
+    <div class="flex justify-center z-10"><div id="seat-north" class="bg-slate-900/85 border border-slate-700/60 rounded-xl px-4 py-2 flex items-center space-x-3 min-w-[180px]"></div></div>
+    <div class="flex-1 flex items-center justify-between my-2 relative">
+      <div class="z-10"><div id="seat-west" class="bg-slate-900/85 border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 min-w-[160px]"></div></div>
+      <div class="absolute inset-0 m-auto w-64 h-64 md:w-80 md:h-80 rounded-full border border-emerald-500/20 bg-emerald-950/20 shadow-2xl">
+        <div id="slot-north" class="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30"></div>
+        <div id="slot-west" class="absolute left-2 top-1/2 -translate-y-1/2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30"></div>
+        <div id="slot-east" class="absolute right-2 top-1/2 -translate-y-1/2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30"></div>
+        <div id="slot-south" class="absolute bottom-2 left-1/2 -translate-x-1/2 w-16 h-24 md:w-20 md:h-28 rounded-lg border-2 border-dashed border-emerald-600/30"></div>
+      </div>
+      <div class="z-10"><div id="seat-east" class="bg-slate-900/85 border border-slate-700/60 rounded-xl px-3 py-2 flex items-center space-x-3 min-w-[160px]"></div></div>
+    </div>
+    <div class="z-20 flex flex-col items-center w-full">
+      <div id="seat-south" class="mb-2 bg-slate-900/90 border border-slate-700/80 rounded-full px-5 py-1.5 flex items-center space-x-3 text-xs"></div>
+      <div class="w-full max-w-4xl min-h-[140px] flex justify-center items-end pb-2">
+        <div id="hand" class="flex justify-center items-end -space-x-8 md:-space-x-10 px-4 py-2 overflow-x-auto max-w-full no-scrollbar"></div>
+      </div>
+    </div>
+  </main>
+</div>
 
-            <!-- NAME INPUT & INITIAL CONTROLS -->
-            <div id="lobby-entry-step" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Your Display Name</label>
-                    <input type="text" id="player-name-input" maxlength="12" placeholder="Enter your name..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 pt-2">
-                    <button onclick="handleStartGroup()" class="py-3.5 px-4 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-plus-circle"></i> Start a Group
-                    </button>
-                    <button onclick="showJoinInput()" class="py-3.5 px-4 rounded-xl font-bold bg-emerald-700 hover:bg-emerald-600 text-white transition shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-users"></i> Join a Group
-                    </button>
-                </div>
-
-                <!-- JOIN CODE INPUT BOX (HIDDEN INITIALLY) -->
-                <div id="join-code-box" class="hidden pt-2 border-t border-slate-800 mt-4 space-y-3">
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Enter 4-Character Room Code</label>
-                    <div class="flex space-x-2">
-                        <input type="text" id="room-code-input" maxlength="4" placeholder="e.g. KR89" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center uppercase font-mono text-lg font-bold tracking-widest text-amber-300 focus:outline-none focus:border-amber-500">
-                        <button onclick="handleJoinGroup()" class="px-6 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl text-white transition">Join</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LOBBY ROOM WAITING SCREEN (SHOWN WHEN IN LOBBY) -->
-            <div id="lobby-room-step" class="hidden space-y-5">
-                <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-                    <div>
-                        <span class="text-xs text-slate-400 uppercase font-semibold">Room Code</span>
-                        <div id="lobby-code-display" class="text-2xl font-mono font-bold text-amber-400 tracking-wider">----</div>
-                    </div>
-                    <button onclick="copyRoomCode()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-600 transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-copy"></i> Copy Code
-                    </button>
-                </div>
-
-                <!-- 4 SEATS PREVIEW IN LOBBY -->
-                <div>
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Players in Room (4 Max)</span>
-                        <span id="lobby-count-tag" class="text-xs text-emerald-400 font-medium">1 / 4 Players</span>
-                    </div>
-                    <div id="lobby-seats-list" class="grid grid-cols-2 gap-3">
-                        <!-- Dynamic seat items generated here -->
-                    </div>
-                </div>
-
-                <!-- HOST VS GUEST ACTION BUTTONS -->
-                <div id="host-lobby-actions" class="hidden pt-3 border-t border-slate-800 space-y-2">
-                    <button id="start-game-btn" onclick="handleHostStartGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 font-bold text-slate-950 rounded-xl shadow-lg transition text-base">
-                        <i class="fa-solid fa-play mr-2"></i> Start Game (Fill Bots for Empty Seats)
-                    </button>
-                    <p class="text-[11px] text-center text-slate-400">Empty seats will be automatically filled with AI Bots when game starts.</p>
-                </div>
-
-                <div id="guest-lobby-actions" class="hidden pt-3 border-t border-slate-800 text-center py-2">
-                    <div class="inline-flex items-center space-x-2 text-amber-400 font-medium text-sm">
-                        <i class="fa-solid fa-spinner animate-spin"></i>
-                        <span>Waiting for host to start the game...</span>
-                    </div>
-                </div>
-            </div>
-
+<!-- LOBBY -->
+<div id="modal-lobby" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 max-w-xl w-full shadow-2xl">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-3xl mb-3"><i class="fa-solid fa-crown"></i></div>
+      <h1 class="text-2xl md:text-3xl font-serif font-bold text-amber-400">KAALI RANI</h1>
+      <p class="text-slate-400 text-xs md:text-sm mt-1">4-player Black Queen trick-taking game</p>
+    </div>
+    <div id="step-entry" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Your Display Name</label>
+        <input id="name-input" maxlength="12" placeholder="Enter your name..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500">
+      </div>
+      <div class="grid grid-cols-2 gap-4 pt-2">
+        <button onclick="startGroup()" class="py-3.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-slate-950"><i class="fa-solid fa-plus-circle"></i> Start a Group</button>
+        <button onclick="document.getElementById('join-box').classList.remove('hidden')" class="py-3.5 rounded-xl font-bold bg-emerald-700 hover:bg-emerald-600 text-white"><i class="fa-solid fa-users"></i> Join a Group</button>
+      </div>
+      <div id="join-box" class="hidden pt-2 border-t border-slate-800 space-y-3">
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Enter 4-Character Room Code</label>
+        <div class="flex space-x-2">
+          <input id="code-input" maxlength="4" placeholder="e.g. KR89" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center uppercase font-mono text-lg font-bold tracking-widest text-amber-300 focus:outline-none focus:border-amber-500">
+          <button id="join-btn" onclick="joinGroup()" class="px-6 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl">Join</button>
         </div>
+      </div>
     </div>
-
-    <!-- MODAL 2: DISTRIBUTOR CUT CARD SETUP -->
-    <div id="modal-distributor" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full shadow-2xl text-center">
-            
-            <h2 class="text-2xl font-serif font-bold text-amber-400 mb-1">Draw for Distributor</h2>
-            <p class="text-xs text-slate-300 mb-6">Each player cuts a card from the deck. The player with the highest rank becomes the Distributor!</p>
-
-            <!-- 4 SEAT CUT CARDS DISPLAY -->
-            <div id="cut-cards-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <!-- Dynamically generated cut cards -->
-            </div>
-
-            <div id="cut-result-banner" class="hidden bg-emerald-950/80 border border-emerald-600/50 p-3 rounded-xl mb-6">
-                <p id="distributor-winner-text" class="text-sm font-bold text-emerald-300">Winner...</p>
-            </div>
-
-            <!-- ACTION BUTTON -->
-            <div id="distributor-action-box">
-                <button id="deal-hands-btn" onclick="handleStartDealing()" class="hidden w-full py-3.5 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl shadow-lg transition">
-                    <i class="fa-solid fa-cards mr-2"></i> Deal 13 Cards to All Players
-                </button>
-                <p id="distributor-wait-text" class="hidden text-sm text-amber-400 font-medium animate-pulse">
-                    Waiting for Distributor to deal cards...
-                </p>
-            </div>
-
-        </div>
+    <div id="step-room" class="hidden space-y-5">
+      <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+        <div><span class="text-xs text-slate-400 uppercase font-semibold">Room Code</span><div id="lobby-code" class="text-2xl font-mono font-bold text-amber-400 tracking-wider"></div></div>
+        <button onclick="copyCode()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-600"><i class="fa-solid fa-copy"></i> Copy</button>
+      </div>
+      <div>
+        <div class="flex justify-between mb-2"><span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Players</span><span id="lobby-count" class="text-xs text-emerald-400"></span></div>
+        <div id="lobby-seats" class="grid grid-cols-2 gap-3"></div>
+        <p id="lobby-note" class="text-[11px] text-center text-slate-400 mt-3"></p>
+      </div>
+      <button id="start-btn" onclick="hostStartGame()" class="hidden w-full py-3.5 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl"><i class="fa-solid fa-play mr-2"></i> Start Game</button>
+      <div id="guest-wait" class="hidden text-center text-amber-400 text-sm"><i class="fa-solid fa-spinner animate-spin"></i> Waiting for host to start the game...</div>
     </div>
+  </div>
+</div>
 
-    <!-- MODAL 3: SCOREBOARD & SUMMARY -->
-    <div id="modal-scores" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
-                <h3 class="text-xl font-serif font-bold text-amber-400">Match Scores</h3>
-                <button onclick="toggleScoreModal()" class="text-slate-400 hover:text-slate-200">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
+<!-- DISTRIBUTOR CUT -->
+<div id="modal-cut" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full text-center">
+    <h2 class="text-2xl font-serif font-bold text-amber-400 mb-1">Draw for Distributor</h2>
+    <p class="text-xs text-slate-300 mb-6">Highest card becomes the Distributor.</p>
+    <div id="cut-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+    <div class="bg-emerald-950/80 border border-emerald-600/50 p-3 rounded-xl mb-6"><p id="cut-winner" class="text-sm font-bold text-emerald-300"></p></div>
+    <button id="deal-btn" onclick="doDeal()" class="hidden w-full py-3.5 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl">Deal 13 Cards to All Players</button>
+    <p id="deal-wait" class="hidden text-sm text-amber-400 animate-pulse">Waiting for Distributor to deal...</p>
+  </div>
+</div>
 
-            <div class="space-y-3 mb-6">
-                <div id="score-rows-list" class="space-y-2">
-                    <!-- Dynamic score rows -->
-                </div>
-            </div>
-
-            <div id="round-over-actions" class="hidden pt-2 border-t border-slate-800">
-                <button id="next-round-btn" onclick="handleHostStartGame()" class="w-full py-3 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl shadow transition">
-                    Start Next Round
-                </button>
-            </div>
-        </div>
+<!-- SCORES -->
+<div id="modal-scores" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+    <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+      <h3 id="score-title" class="text-xl font-serif font-bold text-amber-400">Match Scores</h3>
+      <button id="score-close" onclick="toggleScores()" class="text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark text-lg"></i></button>
     </div>
-
-    <script>
-        /**
-         * KAALI RANI ARCHITECTURE & CONSTANTS
-         */
-        const SUITS = {
-            'SPADES': { symbol: '♠', color: 'text-slate-100', name: 'Spades' },
-            'HEARTS': { symbol: '♥', color: 'text-red-500', name: 'Hearts' },
-            'DIAMONDS': { symbol: '♦', color: 'text-red-500', name: 'Diamonds' },
-            'CLUBS': { symbol: '♣', color: 'text-slate-100', name: 'Clubs' }
-        };
-
-        const RANKS = [
-            { code: '2', val: 2 }, { code: '3', val: 3 }, { code: '4', val: 4 },
-            { code: '5', val: 5 }, { code: '6', val: 6 }, { code: '7', val: 7 },
-            { code: '8', val: 8 }, { code: '9', val: 9 }, { code: '10', val: 10 },
-            { code: 'J', val: 11 }, { code: 'Q', val: 12 }, { code: 'K', val: 13 }, { code: 'A', val: 14 }
-        ];
-
-        // Global State
-        let myPeer = null;
-        let myPeerId = null;
-        let roomCode = null;
-        let isHost = false;
-        let mySeatIndex = 0; // 0=South, 1=West, 2=North, 3=East in master array
-        let hostConnections = []; // Host keeps track of all guest connections
-        let guestConnection = null; // Guest keeps connection to Host
-        let localBroadcastChannel = null;
-
-        // Master Game State (Managed by Host, replicated to guests)
-        let gameState = {
-            status: 'ENTRY', // ENTRY, LOBBY, CUT_CARD, PLAYING, ROUND_OVER
-            roomCode: '',
-            seats: [
-                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
-                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
-                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null },
-                { id: null, name: 'Empty', isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null }
-            ],
-            distributorIndex: -1,
-            currentTurn: -1,
-            leadSuit: null,
-            currentTrick: [], // [{ card, playedBySeat }]
-            completedTricks: 0
-        };
-
-        /**
-         * BROADCAST ROUTER (Star Topology)
-         * Host sends state updates to ALL active guest connections.
-         */
-        function broadcastToAllGuests(data) {
-            // 1. Send via PeerJS connections
-            hostConnections.forEach(conn => {
-                if (conn && conn.open) {
-                    try { conn.send(data); } catch(e) { console.error(e); }
-                }
-            });
-            // 2. Broadcast via BroadcastChannel for instant same-browser multi-tab sync fallback
-            if (localBroadcastChannel) {
-                try { localBroadcastChannel.postMessage(data); } catch(e){}
-            }
-        }
-
-        function sendToHost(data) {
-            if (guestConnection && guestConnection.open) {
-                guestConnection.send(data);
-            } else if (localBroadcastChannel) {
-                localBroadcastChannel.postMessage(data);
-            }
-        }
-
-        /**
-         * ROOM & PEER SETUP
-         */
-        function initPeerJS(customId = null, callback) {
-            if (myPeer) {
-                myPeer.destroy();
-            }
-
-            myPeer = customId ? new Peer(customId) : new Peer();
-
-            myPeer.on('open', (id) => {
-                myPeerId = id;
-                if (callback) callback(id);
-            });
-
-            myPeer.on('connection', (conn) => {
-                if (!isHost) return;
-                
-                // HOST RECEIVES A NEW GUEST
-                conn.on('open', () => {
-                    // Check if space available
-                    const freeSeatIdx = gameState.seats.findIndex(s => !s.id && !s.isHost);
-                    if (freeSeatIdx === -1) {
-                        conn.send({ type: 'ERROR', message: 'Room is full (4 players max).' });
-                        return;
-                    }
-
-                    // Save guest connection
-                    hostConnections.push(conn);
-
-                    // Handle incoming messages from guest
-                    conn.on('data', (data) => handleHostIncomingMessage(data, conn));
-                    conn.on('close', () => handleGuestDisconnect(conn));
-                });
-            });
-
-            myPeer.on('error', (err) => {
-                console.warn('PeerJS note:', err.type);
-                if (err.type === 'unavailable-id') {
-                    showToast('Room Code is unavailable or taken.', 'error');
-                }
-            });
-        }
-
-        function createRoomCode() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            let code = '';
-            for (let i = 0; i < 4; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return code;
-        }
-
-        function handleStartGroup() {
-            const name = document.getElementById('player-name-input').value.trim() || 'Player 1';
-            roomCode = createRoomCode();
-            isHost = true;
-            mySeatIndex = 0;
-
-            const fullPeerId = 'kaali-rani-' + roomCode;
-
-            // Setup local BroadcastChannel for local tab sync
-            setupBroadcastChannel(roomCode);
-
-            initPeerJS(fullPeerId, (id) => {
-                // Initialize Host Game State
-                gameState.roomCode = roomCode;
-                gameState.status = 'LOBBY';
-                gameState.seats[0] = { id: id, name: name + ' (Host)', isBot: false, isHost: true, hand: [], points: 0, tricksWon: 0, cutCard: null };
-                
-                // Setup default AI bots for empty slots
-                for (let i = 1; i < 4; i++) {
-                    gameState.seats[i] = { id: null, name: `Empty Seat ${i+1}`, isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null };
-                }
-
-                updateUIForLobby();
-            });
-        }
-
-        function showJoinInput() {
-            document.getElementById('join-code-box').classList.remove('hidden');
-        }
-
-        function handleJoinGroup() {
-            const name = document.getElementById('player-name-input').value.trim() || 'Guest Player';
-            const inputCode = document.getElementById('room-code-input').value.trim().toUpperCase();
-
-            if (inputCode.length !== 4) {
-                showToast('Please enter a valid 4-character Room Code.', 'error');
-                return;
-            }
-
-            roomCode = inputCode;
-            isHost = false;
-
-            setupBroadcastChannel(roomCode);
-
-            initPeerJS(null, (myId) => {
-                const targetHostPeerId = 'kaali-rani-' + roomCode;
-                guestConnection = myPeer.connect(targetHostPeerId);
-
-                guestConnection.on('open', () => {
-                    // Send Join Request
-                    guestConnection.send({
-                        type: 'JOIN_REQUEST',
-                        playerName: name,
-                        peerId: myId
-                    });
-                });
-
-                guestConnection.on('data', (data) => handleGuestIncomingMessage(data));
-
-                guestConnection.on('close', () => {
-                    showToast('Disconnected from Host.', 'error');
-                });
-            });
-        }
-
-        function setupBroadcastChannel(code) {
-            if (localBroadcastChannel) localBroadcastChannel.close();
-            localBroadcastChannel = new BroadcastChannel('kaali_rani_channel_' + code);
-            localBroadcastChannel.onmessage = (event) => {
-                const data = event.data;
-                if (isHost) {
-                    handleHostIncomingMessage(data, null);
-                } else {
-                    handleGuestIncomingMessage(data);
-                }
-            };
-        }
-
-        function handleHostIncomingMessage(data, conn) {
-            if (!isHost) return;
-
-            switch(data.type) {
-                case 'JOIN_REQUEST':
-                    // Find empty seat
-                    const emptySeatIdx = gameState.seats.findIndex(s => !s.id && !s.isHost);
-                    if (emptySeatIdx !== -1) {
-                        gameState.seats[emptySeatIdx] = {
-                            id: data.peerId,
-                            name: data.playerName,
-                            isBot: false,
-                            isHost: false,
-                            hand: [],
-                            points: 0,
-                            tricksWon: 0,
-                            cutCard: null
-                        };
-
-                        // Send welcome & assigned seat to newcomer
-                        if (conn && conn.open) {
-                            conn.send({
-                                type: 'JOIN_SUCCESS',
-                                seatIndex: emptySeatIdx,
-                                gameState: gameState
-                            });
-                        }
-
-                        // CRITICAL FIX #1: Broadcast full lobby state to ALL guests
-                        broadcastToAllGuests({
-                            type: 'LOBBY_UPDATE',
-                            gameState: gameState
-                        });
-
-                        updateLobbyUI();
-                    }
-                    break;
-
-                case 'CLIENT_ACTION_PLAY_CARD':
-                    if (gameState.currentTurn === data.seatIndex) {
-                        playCard(data.seatIndex, data.cardIndex);
-                    }
-                    break;
-
-                case 'CLIENT_ACTION_DEAL':
-                    if (gameState.status === 'CUT_CARD' && (gameState.distributorIndex === data.seatIndex || isHost)) {
-                        dealFullHands();
-                    }
-                    break;
-            }
-        }
-
-        function handleGuestIncomingMessage(data) {
-            switch(data.type) {
-                case 'JOIN_SUCCESS':
-                    mySeatIndex = data.seatIndex;
-                    gameState = data.gameState;
-                    updateUIForLobby();
-                    showToast(`Joined as Seat ${mySeatIndex + 1}`, 'success');
-                    break;
-
-                case 'LOBBY_UPDATE':
-                    gameState = data.gameState;
-                    updateLobbyUI();
-                    break;
-
-                case 'GAME_START_CUT':
-                    gameState = data.gameState;
-                    mySeatIndex = data.assignedSeatIndex !== undefined ? data.assignedSeatIndex : mySeatIndex;
-                    transitionToCutCardPhase();
-                    break;
-
-                case 'HANDS_DEALT':
-                    gameState = data.gameState;
-                    transitionToPlayingPhase();
-                    break;
-
-                case 'CARD_PLAYED_UPDATE':
-                    gameState = data.gameState;
-                    renderTableAndHand();
-                    break;
-
-                case 'ERROR':
-                    showToast(data.message, 'error');
-                    break;
-            }
-        }
-
-        function handleGuestDisconnect(conn) {
-            if (!isHost) return;
-            hostConnections = hostConnections.filter(c => c !== conn);
-            // Replace disconnected seat with empty
-            gameState.seats.forEach((seat, idx) => {
-                if (seat.id === conn.peer) {
-                    gameState.seats[idx] = { id: null, name: `Empty Seat ${idx+1}`, isBot: false, isHost: false, hand: [], points: 0, tricksWon: 0, cutCard: null };
-                }
-            });
-            broadcastToAllGuests({ type: 'LOBBY_UPDATE', gameState: gameState });
-            updateLobbyUI();
-        }
-
-        function updateUIForLobby() {
-            document.getElementById('header-room-badge').classList.remove('hidden');
-            document.getElementById('header-room-code').innerText = roomCode;
-            document.getElementById('lobby-entry-step').classList.add('hidden');
-            document.getElementById('lobby-room-step').classList.remove('hidden');
-            document.getElementById('lobby-code-display').innerText = roomCode;
-
-            if (isHost) {
-                document.getElementById('host-lobby-actions').classList.remove('hidden');
-                document.getElementById('guest-lobby-actions').classList.add('hidden');
-            } else {
-                document.getElementById('host-lobby-actions').classList.add('hidden');
-                document.getElementById('guest-lobby-actions').classList.remove('hidden');
-            }
-
-            updateLobbyUI();
-        }
-
-        function updateLobbyUI() {
-            const seatsList = document.getElementById('lobby-seats-list');
-            seatsList.innerHTML = '';
-
-            let filledCount = 0;
-
-            gameState.seats.forEach((seat, idx) => {
-                const isOccupied = seat.id !== null || seat.isHost;
-                if (isOccupied) filledCount++;
-
-                const isMe = idx === mySeatIndex;
-                
-                const card = document.createElement('div');
-                card.className = `p-3 rounded-xl border ${isOccupied ? 'bg-slate-800 border-amber-500/40' : 'bg-slate-950/60 border-slate-800'} flex items-center justify-between`;
-                
-                card.innerHTML = `
-                    <div class="flex items-center space-x-2.5">
-                        <div class="w-8 h-8 rounded-full ${isOccupied ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-500'} font-bold flex items-center justify-center text-xs">
-                            ${idx + 1}
-                        </div>
-                        <div>
-                            <div class="text-xs font-bold text-slate-200">${seat.name} ${isMe ? '(You)' : ''}</div>
-                            <div class="text-[10px] text-slate-400">${seat.isHost ? 'Room Host' : (isOccupied ? 'Player' : 'Will be AI Bot')}</div>
-                        </div>
-                    </div>
-                    ${seat.isHost ? '<span class="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">HOST</span>' : ''}
-                `;
-                seatsList.appendChild(card);
-            });
-
-            document.getElementById('lobby-count-tag').innerText = `${filledCount} / 4 Players`;
-        }
-
-        /**
-         * REQUIREMENT #3: DISTRIBUTOR CUT CARD SETUP
-         */
-        function handleHostStartGame() {
-            if (!isHost) return;
-
-            // Fill empty human seats with AI Bots
-            gameState.seats.forEach((seat, idx) => {
-                if (!seat.id && !seat.isHost) {
-                    gameState.seats[idx] = {
-                        id: 'bot-' + idx,
-                        name: `Bot ${['Alpha', 'Beta', 'Gamma', 'Delta'][idx]}`,
-                        isBot: true,
-                        isHost: false,
-                        hand: [],
-                        points: 0,
-                        tricksWon: 0,
-                        cutCard: null
-                    };
-                }
-            });
-
-            // Generate Cut Cards for all 4 seats to find Distributor
-            const cutDeck = createDeck();
-            shuffleDeck(cutDeck);
-
-            let highestRank = -1;
-            let winningSeatIdx = 0;
-
-            gameState.seats.forEach((seat, idx) => {
-                const card = cutDeck.pop();
-                seat.cutCard = card;
-                if (card.val > highestRank) {
-                    highestRank = card.val;
-                    winningSeatIdx = idx;
-                }
-            });
-
-            gameState.distributorIndex = winningSeatIdx;
-            gameState.status = 'CUT_CARD';
-
-            // CRITICAL FIX #2: Broadcast GAME_START_CUT to all guests simultaneously
-            hostConnections.forEach((conn) => {
-                // Find guest's seat index
-                const guestSeatIdx = gameState.seats.findIndex(s => s.id === conn.peer);
-                conn.send({
-                    type: 'GAME_START_CUT',
-                    assignedSeatIndex: guestSeatIdx,
-                    gameState: gameState
-                });
-            });
-
-            if (localBroadcastChannel) {
-                localBroadcastChannel.postMessage({
-                    type: 'GAME_START_CUT',
-                    gameState: gameState
-                });
-            }
-
-            transitionToCutCardPhase();
-        }
-
-        function transitionToCutCardPhase() {
-            document.getElementById('modal-lobby').classList.add('hidden');
-            document.getElementById('modal-scores').classList.add('hidden');
-            document.getElementById('modal-distributor').classList.remove('hidden');
-
-            const grid = document.getElementById('cut-cards-grid');
-            grid.innerHTML = '';
-
-            gameState.seats.forEach((seat, idx) => {
-                const cardObj = seat.cutCard;
-                const suitInfo = SUITS[cardObj.suit];
-                
-                const cardEl = document.createElement('div');
-                cardEl.className = 'bg-slate-950 border border-slate-700 rounded-xl p-3 flex flex-col items-center justify-center space-y-2 shadow-inner';
-                cardEl.innerHTML = `
-                    <span class="text-xs text-slate-400 font-semibold truncate w-full text-center">${seat.name}</span>
-                    <div class="w-16 h-24 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border-2 ${seat.cutCard ? 'border-amber-400' : 'border-slate-300'}">
-                        <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
-                        <div class="text-center text-2xl ${suitInfo.color}">${suitInfo.symbol}</div>
-                        <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
-                    </div>
-                `;
-                grid.appendChild(cardEl);
-            });
-
-            const winnerSeat = gameState.seats[gameState.distributorIndex];
-            const banner = document.getElementById('cut-result-banner');
-            const winnerText = document.getElementById('distributor-winner-text');
-            
-            banner.classList.remove('hidden');
-            winnerText.innerText = `👑 ${winnerSeat.name} drew the highest card (${winnerSeat.cutCard.code}${SUITS[winnerSeat.cutCard.suit].symbol}) and is the Distributor!`;
-
-            const isDistributor = (mySeatIndex === gameState.distributorIndex);
-            const dealBtn = document.getElementById('deal-hands-btn');
-            const waitText = document.getElementById('distributor-wait-text');
-
-            if (isDistributor || (isHost && winnerSeat.isBot)) {
-                dealBtn.classList.remove('hidden');
-                waitText.classList.add('hidden');
-            } else {
-                dealBtn.classList.add('hidden');
-                waitText.classList.remove('hidden');
-            }
-        }
-
-        function handleStartDealing() {
-            if (isHost) {
-                dealFullHands();
-            } else {
-                sendToHost({ type: 'CLIENT_ACTION_DEAL', seatIndex: mySeatIndex });
-            }
-        }
-
-        function dealFullHands() {
-            if (!isHost) return;
-
-            const fullDeck = createDeck();
-            shuffleDeck(fullDeck);
-
-            // Deal 13 cards to each of the 4 players
-            for (let i = 0; i < 4; i++) {
-                gameState.seats[i].hand = fullDeck.splice(0, 13);
-                // Sort hand by Suit and Value
-                sortHand(gameState.seats[i].hand);
-                gameState.seats[i].points = 0;
-                gameState.seats[i].tricksWon = 0;
-            }
-
-            // Lead starts with player to left of Distributor
-            gameState.currentTurn = (gameState.distributorIndex + 1) % 4;
-            gameState.leadSuit = null;
-            gameState.currentTrick = [];
-            gameState.completedTricks = 0;
-            gameState.status = 'PLAYING';
-
-            broadcastToAllGuests({
-                type: 'HANDS_DEALT',
-                gameState: gameState
-            });
-
-            transitionToPlayingPhase();
-        }
-
-        function transitionToPlayingPhase() {
-            document.getElementById('modal-distributor').classList.add('hidden');
-            document.getElementById('score-btn').classList.remove('hidden');
-            document.getElementById('leave-btn').classList.remove('hidden');
-            
-            renderTableAndHand();
-
-            // Trigger AI if it's AI turn
-            if (isHost && gameState.seats[gameState.currentTurn].isBot) {
-                setTimeout(processAITurn, 1000);
-            }
-        }
-
-        function createDeck() {
-            const deck = [];
-            Object.keys(SUITS).forEach(suitKey => {
-                RANKS.forEach(rank => {
-                    const isKaaliRani = (suitKey === 'SPADES' && rank.code === 'Q');
-                    deck.push({
-                        suit: suitKey,
-                        rank: rank.code,
-                        val: rank.val,
-                        code: rank.code,
-                        isKaaliRani: isKaaliRani
-                    });
-                });
-            });
-            return deck;
-        }
-
-        function shuffleDeck(deck) {
-            for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-        }
-
-        function sortHand(hand) {
-            const suitOrder = { 'SPADES': 0, 'HEARTS': 1, 'CLUBS': 2, 'DIAMONDS': 3 };
-            hand.sort((a, b) => {
-                if (suitOrder[a.suit] !== suitOrder[b.suit]) {
-                    return suitOrder[a.suit] - suitOrder[b.suit];
-                }
-                return b.val - a.val;
-            });
-        }
-
-        /**
-         * SEAT ROTATION HELPERS
-         * Maps actual seat index (0..3) to relative visual position for local user (South = Me)
-         */
-        function getVisualPosition(actualSeatIdx) {
-            const relIndex = (actualSeatIdx - mySeatIndex + 4) % 4;
-            return ['south', 'west', 'north', 'east'][relIndex];
-        }
-
-        function renderTableAndHand() {
-            // Render Seats Info
-            ['south', 'west', 'north', 'east'].forEach(pos => {
-                document.getElementById(`distributor-${pos}`).classList.add('hidden');
-            });
-
-            gameState.seats.forEach((seat, actualIdx) => {
-                const pos = getVisualPosition(actualIdx);
-                
-                document.getElementById(`name-${pos}`).innerText = seat.name;
-                document.getElementById(`pts-${pos}`).innerText = seat.points;
-
-                if (pos !== 'south') {
-                    document.getElementById(`cards-count-${pos}`).innerText = seat.hand.length;
-                }
-
-                if (actualIdx === gameState.distributorIndex) {
-                    document.getElementById(`distributor-${pos}`).classList.remove('hidden');
-                }
-
-                // Highlight active turn player
-                const seatContainer = document.getElementById(`seat-${pos}`);
-                if (actualIdx === gameState.currentTurn) {
-                    seatContainer.classList.add('ring-2', 'ring-amber-400', 'shadow-amber-500/30');
-                } else {
-                    seatContainer.classList.remove('ring-2', 'ring-amber-400', 'shadow-amber-500/30');
-                }
-            });
-
-            // Update Status Banner
-            const activePlayerName = gameState.seats[gameState.currentTurn].name;
-            document.getElementById('status-text').innerText = `${activePlayerName}'s turn to play`;
-
-            // Render Center Trick Arena
-            renderCenterTrick();
-
-            // Render South (Local User) Hand
-            renderLocalPlayerHand();
-        }
-
-        function renderCenterTrick() {
-            ['south', 'west', 'north', 'east'].forEach(pos => {
-                const slot = document.getElementById(`trick-slot-${pos}`);
-                slot.innerHTML = '';
-            });
-
-            gameState.currentTrick.forEach(play => {
-                const pos = getVisualPosition(play.seatIndex);
-                const slot = document.getElementById(`trick-slot-${pos}`);
-                
-                const cardObj = play.card;
-                const suitInfo = SUITS[cardObj.suit];
-
-                const cardEl = document.createElement('div');
-                cardEl.className = `w-16 h-24 md:w-20 md:h-28 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border ${cardObj.isKaaliRani ? 'kaali-rani-glow' : 'border-slate-300'}`;
-                cardEl.innerHTML = `
-                    <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
-                    <div class="text-center text-2xl ${suitInfo.color}">${cardObj.isKaaliRani ? '👑' : suitInfo.symbol}</div>
-                    <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
-                `;
-                slot.appendChild(cardEl);
-            });
-        }
-
-        function renderLocalPlayerHand() {
-            const container = document.getElementById('player-hand-container');
-            container.innerHTML = '';
-
-            const myHand = gameState.seats[mySeatIndex].hand || [];
-            const isMyTurn = (gameState.currentTurn === mySeatIndex);
-
-            // Check if user must follow lead suit
-            const hasLeadSuit = gameState.leadSuit ? myHand.some(c => c.suit === gameState.leadSuit) : false;
-
-            myHand.forEach((cardObj, idx) => {
-                const suitInfo = SUITS[cardObj.suit];
-                const canPlay = isMyTurn && (!gameState.leadSuit || !hasLeadSuit || cardObj.suit === gameState.leadSuit);
-
-                const cardBtn = document.createElement('button');
-                cardBtn.className = `relative w-16 h-24 md:w-20 md:h-28 bg-slate-100 rounded-lg card-shadow flex flex-col justify-between p-2 text-slate-950 font-bold border card-3d-hover focus:outline-none ${cardObj.isKaaliRani ? 'kaali-rani-glow ring-2 ring-purple-500' : 'border-slate-300'} ${!canPlay ? 'opacity-50 grayscale hover:translate-y-0 cursor-not-allowed' : 'cursor-pointer hover:border-amber-400'}`;
-                
-                cardBtn.onclick = () => {
-                    if (canPlay) handlePlayCard(idx);
-                };
-
-                cardBtn.innerHTML = `
-                    <div class="text-left text-xs ${suitInfo.color}">${cardObj.code}${suitInfo.symbol}</div>
-                    <div class="text-center text-2xl md:text-3xl ${suitInfo.color}">${cardObj.isKaaliRani ? '👑' : suitInfo.symbol}</div>
-                    <div class="text-right text-xs ${suitInfo.color}">${cardObj.code}</div>
-                `;
-
-                container.appendChild(cardBtn);
-            });
-        }
-
-        function handlePlayCard(cardIndex) {
-            if (isHost) {
-                playCard(mySeatIndex, cardIndex);
-            } else {
-                sendToHost({
-                    type: 'CLIENT_ACTION_PLAY_CARD',
-                    seatIndex: mySeatIndex,
-                    cardIndex: cardIndex
-                });
-            }
-        }
-
-        function playCard(seatIndex, cardIndex) {
-            if (!isHost) return;
-
-            const player = gameState.seats[seatIndex];
-            const playedCard = player.hand.splice(cardIndex, 1)[0];
-
-            if (!gameState.leadSuit) {
-                gameState.leadSuit = playedCard.suit;
-            }
-
-            gameState.currentTrick.push({
-                card: playedCard,
-                seatIndex: seatIndex
-            });
-
-            // Move turn to next clockwise player
-            gameState.currentTurn = (seatIndex + 1) % 4;
-
-            // Broadcast move update immediately
-            broadcastToAllGuests({
-                type: 'CARD_PLAYED_UPDATE',
-                gameState: gameState
-            });
-
-            renderTableAndHand();
-
-            // Check if trick is complete (4 cards played)
-            if (gameState.currentTrick.length === 4) {
-                setTimeout(evaluateTrickWinner, 1200);
-            } else {
-                // Trigger AI if next turn is AI
-                if (gameState.seats[gameState.currentTurn].isBot) {
-                    setTimeout(processAITurn, 1000);
-                }
-            }
-        }
-
-        function evaluateTrickWinner() {
-            if (!isHost) return;
-
-            let winnerSeatIdx = gameState.currentTrick[0].seatIndex;
-            let highestVal = -1;
-            let trickPoints = 0;
-
-            gameState.currentTrick.forEach(play => {
-                const card = play.card;
-                
-                // Kaali Rani (Q♠) = 50 penalty points!
-                if (card.isKaaliRani) {
-                    trickPoints += 50;
-                } else if (card.suit === 'HEARTS') {
-                    trickPoints += 1; // Hearts = 1 point each
-                }
-
-                // Check highest card matching lead suit
-                if (card.suit === gameState.leadSuit && card.val > highestVal) {
-                    highestVal = card.val;
-                    winnerSeatIdx = play.seatIndex;
-                }
-            });
-
-            // Assign trick & points to winner
-            gameState.seats[winnerSeatIdx].tricksWon += 1;
-            gameState.seats[winnerSeatIdx].points += trickPoints;
-
-            const winnerName = gameState.seats[winnerSeatIdx].name;
-            showToast(`${winnerName} won the trick! (${trickPoints} pts)`, 'info');
-
-            // Reset for next trick
-            gameState.currentTrick = [];
-            gameState.leadSuit = null;
-            gameState.currentTurn = winnerSeatIdx;
-            gameState.completedTricks += 1;
-
-            if (gameState.completedTricks === 13) {
-                gameState.status = 'ROUND_OVER';
-                broadcastToAllGuests({ type: 'CARD_PLAYED_UPDATE', gameState: gameState });
-                renderTableAndHand();
-                setTimeout(showRoundOverScores, 1000);
-            } else {
-                broadcastToAllGuests({ type: 'CARD_PLAYED_UPDATE', gameState: gameState });
-                renderTableAndHand();
-
-                if (gameState.seats[gameState.currentTurn].isBot) {
-                    setTimeout(processAITurn, 1000);
-                }
-            }
-        }
-
-        function processAITurn() {
-            if (!isHost) return;
-
-            const botSeatIdx = gameState.currentTurn;
-            const bot = gameState.seats[botSeatIdx];
-
-            if (!bot.isBot || bot.hand.length === 0) return;
-
-            // Filter valid playable cards
-            const hasLeadSuit = gameState.leadSuit ? bot.hand.some(c => c.suit === gameState.leadSuit) : false;
-            
-            let playableIndices = [];
-            bot.hand.forEach((card, idx) => {
-                if (!gameState.leadSuit || !hasLeadSuit || card.suit === gameState.leadSuit) {
-                    playableIndices.push(idx);
-                }
-            });
-
-            // AI Card Selection Strategy
-            let chosenIndex = playableIndices[0];
-
-            // If void in lead suit, dump Kaali Rani if in hand!
-            if (gameState.leadSuit && !hasLeadSuit) {
-                const kaaliIdx = bot.hand.findIndex(c => c.isKaaliRani);
-                if (kaaliIdx !== -1) chosenIndex = kaaliIdx;
-            }
-
-            playCard(botSeatIdx, chosenIndex);
-        }
-
-        function showRoundOverScores() {
-            const list = document.getElementById('score-rows-list');
-            list.innerHTML = '';
-
-            // Find lowest points (In Kaali Rani, lowest score wins!)
-            let minPoints = Infinity;
-            gameState.seats.forEach(s => {
-                if (s.points < minPoints) minPoints = s.points;
-            });
-
-            gameState.seats.forEach(seat => {
-                const isWinner = seat.points === minPoints;
-                const row = document.createElement('div');
-                row.className = `p-3 rounded-xl border flex items-center justify-between ${isWinner ? 'bg-amber-500/20 border-amber-500' : 'bg-slate-950 border-slate-800'}`;
-                row.innerHTML = `
-                    <div class="flex items-center space-x-2">
-                        <span class="text-sm font-bold text-slate-200">${seat.name}</span>
-                        ${isWinner ? '<span class="text-xs bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">WINNER</span>' : ''}
-                    </div>
-                    <div class="text-right">
-                        <span class="text-xs text-slate-400">Tricks: ${seat.tricksWon} | </span>
-                        <span class="text-sm font-mono font-bold ${seat.points > 0 ? 'text-red-400' : 'text-emerald-400'}">${seat.points} Pts</span>
-                    </div>
-                `;
-                list.appendChild(row);
-            });
-
-            if (isHost) {
-                document.getElementById('round-over-actions').classList.remove('hidden');
-            }
-
-            document.getElementById('modal-scores').classList.remove('hidden');
-        }
-
-        function toggleScoreModal() {
-            const modal = document.getElementById('modal-scores');
-            modal.classList.toggle('hidden');
-        }
-
-        function copyRoomCode() {
-            navigator.clipboard.writeText(roomCode);
-            showToast('Room Code copied to clipboard!', 'success');
-        }
-
-        function leaveRoom() {
-            window.location.reload();
-        }
-
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            
-            const bgClass = type === 'error' ? 'bg-red-950 border-red-600 text-red-200' :
-                            type === 'success' ? 'bg-emerald-950 border-emerald-600 text-emerald-200' :
-                            'bg-slate-900 border-amber-500/50 text-amber-300';
-
-            toast.className = `px-4 py-3 rounded-xl border text-xs font-semibold shadow-2xl flex items-center space-x-2 backdrop-blur transition-all duration-300 transform translate-y-2`;
-            toast.classList.add(...bgClass.split(' '));
-            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> <span>${message}</span>`;
-
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.add('opacity-0', '-translate-y-2');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-    </script>
+    <div id="score-rows" class="space-y-2 mb-4"></div>
+    <p class="text-[11px] text-slate-400 mb-3">Q♠ = +13 · each ♥ = +1 · J♦ = −10 · lowest total wins</p>
+    <button id="next-btn" onclick="hostNextRound()" class="hidden w-full py-3 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl"></button>
+    <p id="next-wait" class="hidden text-center text-sm text-amber-400">Waiting for host...</p>
+  </div>
+</div>
+
+<script>
+/* ---------- constants & helpers ---------- */
+const SUITS={SPADES:{s:'♠',c:'text-slate-900'},HEARTS:{s:'♥',c:'text-red-600'},DIAMONDS:{s:'♦',c:'text-red-600'},CLUBS:{s:'♣',c:'text-slate-900'}};
+const RANKS=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const POS=['south','west','north','east'];
+const $=id=>document.getElementById(id);
+const show=(id,on)=>$(id).classList.toggle('hidden',!on);
+const isPen=c=>c.suit==='HEARTS'||c.isKaaliRani;
+
+/* ---------- state ---------- */
+let peer=null,isHost=false,me=0,roomCode='',conns={},guestConn=null,showScoresFlag=false;
+const blankSeat=()=>({id:null,name:'Empty',isBot:false,isHost:false,hand:[],round:0,total:0,tricks:0,cutCard:null});
+const newState=()=>({status:'ENTRY',seats:[0,1,2,3].map(blankSeat),dist:-1,turn:-1,lead:null,trick:[],done:0,broken:false,roundNo:1,totalRounds:4,msg:''});
+let gs=newState();
+
+/* ---------- networking ---------- */
+function viewFor(i){ // hide other players' hands from guests
+  const v=JSON.parse(JSON.stringify(gs));
+  v.seats.forEach((s,k)=>{if(k!==i)s.hand=s.hand.map(()=>null)});
+  return v;
+}
+function pushState(){
+  if(!isHost)return;
+  Object.entries(conns).forEach(([pid,c])=>{
+    const i=gs.seats.findIndex(s=>s.id===pid);
+    if(c.open&&i>-1)c.send({type:'STATE',seat:i,gs:viewFor(i)});
+  });
+  render();
+}
+function openPeer(id,cb){
+  if(peer)peer.destroy();
+  peer=id?new Peer(id):new Peer();
+  peer.on('open',cb);
+  peer.on('connection',conn=>{
+    if(!isHost)return;
+    conn.on('data',d=>hostMsg(d,conn));
+    conn.on('close',()=>guestLeft(conn));
+  });
+  peer.on('error',e=>{
+    if(e.type==='unavailable-id'&&isHost){startGroup();return;} // code collision: pick a new one
+    if(e.type==='peer-unavailable'){toast('Room not found. Check the code.','error');$('join-btn').disabled=false;return;}
+    toast('Connection problem: '+e.type,'error');
+  });
+}
+function genCode(){const ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:4},()=>ch[Math.floor(Math.random()*ch.length)]).join('')}
+const myName=d=>$('name-input').value.trim()||d;
+
+function startGroup(){
+  const name=myName('Host');
+  isHost=true;me=0;roomCode=genCode();
+  openPeer('kaali-rani-'+roomCode,id=>{
+    gs=newState();gs.status='LOBBY';
+    gs.seats[0]={...blankSeat(),id,name,isHost:true};
+    pushState();
+  });
+}
+function joinGroup(){
+  const code=$('code-input').value.trim().toUpperCase();
+  if(code.length!==4)return toast('Enter the 4-character room code.','error');
+  const name=myName('Guest');
+  isHost=false;roomCode=code;$('join-btn').disabled=true;
+  openPeer(null,()=>{
+    guestConn=peer.connect('kaali-rani-'+code,{reliable:true});
+    const t=setTimeout(()=>{toast('Could not reach that room.','error');$('join-btn').disabled=false},8000);
+    guestConn.on('open',()=>{clearTimeout(t);guestConn.send({type:'JOIN',name})});
+    guestConn.on('data',d=>{
+      if(d.type==='STATE'){gs=d.gs;me=d.seat;render()}
+      if(d.type==='ERROR')toast(d.msg,'error');
+    });
+    guestConn.on('close',()=>{toast('Disconnected from room.','error');setTimeout(()=>location.reload(),2500)});
+  });
+}
+function sendHost(d){if(guestConn&&guestConn.open)guestConn.send(d)}
+
+function hostMsg(d,conn){
+  const i=gs.seats.findIndex(s=>s.id===conn.peer);
+  if(d.type==='JOIN'){
+    if(i>-1){pushState();return}
+    if(gs.status!=='LOBBY')return reject(conn,'This game is already in progress.');
+    const f=gs.seats.findIndex(s=>!s.id);
+    if(f<0)return reject(conn,'Room is full (4 players max).');
+    gs.seats[f]={...blankSeat(),id:conn.peer,name:(d.name||'Guest').slice(0,12)};
+    conns[conn.peer]=conn;
+    pushState();return;
+  }
+  if(i<0)return; // unseated peers can't act
+  if(d.type==='PLAY')playCard(i,d.idx);
+  if(d.type==='DEAL'&&gs.status==='CUT_CARD'&&gs.dist===i)deal();
+}
+function reject(conn,msg){
+  const send=()=>{conn.send({type:'ERROR',msg});setTimeout(()=>conn.close(),600)};
+  conn.open?send():conn.on('open',send);
+}
+function guestLeft(conn){
+  delete conns[conn.peer];
+  const i=gs.seats.findIndex(s=>s.id===conn.peer);
+  if(i<0)return;
+  if(gs.status==='LOBBY'){
+    gs.seats[i]=blankSeat(); // seat reopens: code works again
+  }else{ // mid-game: a bot takes over the seat
+    const s=gs.seats[i];s.id='bot-'+i;s.isBot=true;s.name='Bot '+s.name.slice(0,8);
+    toast(s.name+' took over a leaving player\'s seat.','info');
+  }
+  pushState();
+  scheduleAI();
+}
+
+/* ---------- game logic (host only) ---------- */
+function createDeck(){
+  const d=[];
+  Object.keys(SUITS).forEach(suit=>RANKS.forEach((r,k)=>d.push({suit,code:r,val:k+2,isKaaliRani:suit==='SPADES'&&r==='Q'})));
+  return d;
+}
+function shuffle(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]]}}
+function sortHand(h){const o={SPADES:0,HEARTS:1,CLUBS:2,DIAMONDS:3};h.sort((a,b)=>o[a.suit]-o[b.suit]||b.val-a.val)}
+
+function hostStartGame(){
+  if(!isHost||gs.status!=='LOBBY')return;
+  const greek=['Alpha','Beta','Gamma','Delta'];
+  gs.seats.forEach((s,i)=>{if(!s.id){Object.assign(s,blankSeat(),{id:'bot-'+i,name:'Bot '+greek[i],isBot:true})}});
+  const d=createDeck();shuffle(d);
+  let best=-1;
+  gs.seats.forEach((s,i)=>{s.cutCard=d.pop();s.total=0;if(s.cutCard.val>best){best=s.cutCard.val;gs.dist=i}});
+  gs.roundNo=1;gs.status='CUT_CARD';
+  pushState();
+}
+function doDeal(){isHost?deal():sendHost({type:'DEAL'})}
+function deal(){
+  const d=createDeck();shuffle(d);
+  gs.seats.forEach(s=>{s.hand=d.splice(0,13);sortHand(s.hand);s.round=0;s.tricks=0});
+  Object.assign(gs,{turn:gs.dist,lead:null,trick:[],done:0,broken:false,status:'PLAYING',msg:''});
+  pushState();scheduleAI();
+}
+function hostNextRound(){
+  if(!isHost||gs.status!=='ROUND_OVER')return;
+  gs.roundNo++;gs.dist=(gs.dist+1)%4; // distributor rotates clockwise
+  deal();
+}
+function legal(hand){ // indices of playable cards
+  const all=hand.map((_,i)=>i);
+  if(gs.lead){
+    const f=all.filter(i=>hand[i].suit===gs.lead);
+    return f.length?f:all;
+  }
+  if(gs.done===0||!gs.broken){
+    const ok=all.filter(i=>!isPen(hand[i]));
+    return ok.length?ok:all;
+  }
+  return all;
+}
+function playCard(seat,idx){
+  if(gs.status!=='PLAYING'||gs.turn!==seat||gs.trick.length>=4)return;
+  const p=gs.seats[seat];
+  if(!p.hand[idx]||!legal(p.hand).includes(idx))return;
+  const card=p.hand.splice(idx,1)[0];
+  if(!gs.lead)gs.lead=card.suit;
+  gs.trick.push({card,seat});
+  gs.msg='';
+  if(gs.trick.length===4){gs.turn=-1;pushState();setTimeout(resolveTrick,1300)}
+  else{gs.turn=(seat+1)%4;pushState();scheduleAI()}
+}
+function resolveTrick(){
+  let w=gs.trick[0],pts=0;
+  gs.trick.forEach(t=>{
+    const c=t.card;
+    if(c.isKaaliRani)pts+=13;else if(c.suit==='HEARTS')pts+=1;else if(c.suit==='DIAMONDS'&&c.code==='J')pts-=10;
+    if(c.suit===gs.lead&&c.val>w.card.val)w=t;
+  });
+  const ws=gs.seats[w.seat];
+  ws.tricks++;ws.round+=pts;
+  if(gs.trick.some(t=>isPen(t.card)))gs.broken=true;
+  gs.msg=`${ws.name} won the trick (${pts>0?'+':''}${pts})`;
+  gs.trick=[];gs.lead=null;gs.done++;gs.turn=w.seat;
+  if(gs.done===13){
+    gs.seats.forEach(s=>s.total+=s.round);
+    gs.status=gs.roundNo>=gs.totalRounds?'MATCH_OVER':'ROUND_OVER';
+    gs.turn=-1;pushState();
+  }else{pushState();scheduleAI()}
+}
+function scheduleAI(){
+  if(isHost&&gs.status==='PLAYING'&&gs.turn>-1&&gs.seats[gs.turn].isBot)setTimeout(aiTurn,900);
+}
+function aiTurn(){
+  if(gs.status!=='PLAYING'||gs.trick.length>=4)return;
+  const i=gs.turn,b=gs.seats[i];
+  if(!b||!b.isBot)return;
+  const h=b.hand,L=legal(h),asc=(x,y)=>h[x].val-h[y].val;
+  const void_=gs.lead&&!h.some(c=>c.suit===gs.lead);
+  let pick;
+  if(void_){ // dump: Q♠, then biggest heart, then biggest non-J♦
+    pick=L.find(k=>h[k].isKaaliRani);
+    if(pick===undefined)pick=L.filter(k=>h[k].suit==='HEARTS').sort(asc).pop();
+    if(pick===undefined)pick=L.filter(k=>!(h[k].suit==='DIAMONDS'&&h[k].code==='J')).sort(asc).pop();
+    if(pick===undefined)pick=L[0];
+  }else{ // play low, avoid Q♠ if possible
+    const pool=L.filter(k=>!h[k].isKaaliRani);
+    pick=(pool.length?pool:L).sort(asc)[0];
+  }
+  playCard(i,pick);
+}
+
+/* ---------- rendering ---------- */
+const face=(c,cls='')=>{
+  const s=SUITS[c.suit];
+  return `<div class="flex flex-col justify-between w-full h-full p-1.5 ${s.c} ${cls}"><div class="text-left text-xs leading-none">${c.code}${s.s}</div><div class="text-center text-2xl">${c.isKaaliRani?'👑':s.s}</div><div class="text-right text-xs leading-none">${c.code}</div></div>`;
+};
+const visual=i=>POS[(i-me+4)%4];
+
+function render(){
+  const st=gs.status,over=st==='ROUND_OVER'||st==='MATCH_OVER';
+  show('modal-lobby',st==='LOBBY'||st==='ENTRY');
+  show('modal-cut',st==='CUT_CARD');
+  show('modal-scores',over||(showScoresFlag&&st==='PLAYING'));
+  show('hdr-room',st!=='ENTRY');$('hdr-code').innerText=roomCode;
+  show('leave-btn',st!=='ENTRY');
+  show('score-btn',st==='PLAYING'||over);
+  if(st==='LOBBY'){$('step-entry').classList.add('hidden');$('step-room').classList.remove('hidden');renderLobby()}
+  if(st==='CUT_CARD')renderCut();
+  if(st==='PLAYING'||over){renderTable();renderScores()}
+}
+function renderLobby(){
+  $('lobby-code').innerText=roomCode;
+  let n=0;
+  $('lobby-seats').innerHTML=gs.seats.map((s,i)=>{
+    const occ=!!s.id;if(occ)n++;
+    return `<div class="p-3 rounded-xl border ${occ?'bg-slate-800 border-amber-500/40':'bg-slate-950/60 border-slate-800'} flex items-center justify-between">
+      <div class="flex items-center space-x-2.5"><div class="w-8 h-8 rounded-full ${occ?'bg-amber-500 text-slate-950':'bg-slate-800 text-slate-500'} font-bold flex items-center justify-center text-xs">${i+1}</div>
+      <div><div class="text-xs font-bold">${occ?s.name:'Waiting...'} ${i===me?'(You)':''}</div><div class="text-[10px] text-slate-400">${s.isHost?'Room Host':occ?'Player':'Bot if empty'}</div></div></div>
+      ${s.isHost?'<span class="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">HOST</span>':''}</div>`;
+  }).join('');
+  $('lobby-count').innerText=`${n} / 4 Players`;
+  $('lobby-note').innerText=n===4?'Room is full. No one else can join unless a player leaves.':`Share the code. ${4-n} empty seat(s) will be filled by bots when the host starts.`;
+  show('start-btn',isHost);show('guest-wait',!isHost);
+}
+function renderCut(){
+  $('cut-grid').innerHTML=gs.seats.map(s=>`<div class="bg-slate-950 border border-slate-700 rounded-xl p-3 flex flex-col items-center space-y-2"><span class="text-xs text-slate-400 truncate w-full text-center">${s.name}</span><div class="w-16 h-24 bg-slate-100 rounded-lg card-shadow border-2 border-amber-400">${face(s.cutCard)}</div></div>`).join('');
+  const w=gs.seats[gs.dist];
+  $('cut-winner').innerText=`👑 ${w.name} drew the highest card and is the Distributor!`;
+  const canDeal=gs.dist===me||(isHost&&w.isBot);
+  show('deal-btn',canDeal);show('deal-wait',!canDeal);
+}
+function renderTable(){
+  gs.seats.forEach((s,i)=>{
+    const pos=visual(i),el=$('seat-'+pos);
+    const badge=i===gs.dist?'<span class="ml-1 bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 rounded-full">D</span>':'';
+    const turn=i===gs.turn;
+    if(pos==='south'){
+      el.className=`mb-2 bg-slate-900/90 border border-slate-700/80 rounded-full px-5 py-1.5 flex items-center space-x-3 text-xs ${turn?'ring-2 ring-amber-400':''}`;
+      el.innerHTML=`<b>${s.name}</b>${badge}<span class="text-slate-400">Round: <b class="text-amber-400">${s.round}</b> · Total: <b class="text-amber-400">${s.total}</b></span>`;
+    }else{
+      el.className=el.className.replace(/ring-2 ring-amber-400/,'')+(turn?' ring-2 ring-amber-400':'');
+      el.innerHTML=`<div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center font-bold text-amber-400">${s.name[0]}</div>
+      <div><div class="text-xs font-semibold max-w-[100px] truncate">${s.name}${badge}</div><div class="text-[11px] text-slate-400">Cards <b class="text-emerald-400">${s.hand.length}</b> · Rnd <b class="text-amber-400">${s.round}</b> · Tot <b class="text-amber-400">${s.total}</b></div></div>`;
+    }
+  });
+  const t=gs.seats[gs.turn];
+  $('status-text').innerText=(t?(gs.turn===me?'Your turn':t.name+"'s turn"):(gs.status==='PLAYING'?'Trick complete':'Round over'))+(gs.msg?' · '+gs.msg:'')+` · Round ${gs.roundNo}/${gs.totalRounds}`+(gs.broken?' · ♥ broken':'');
+  POS.forEach(p=>$('slot-'+p).innerHTML='');
+  gs.trick.forEach(t=>{
+    const c=t.card;
+    $('slot-'+visual(t.seat)).innerHTML=`<div class="w-full h-full bg-slate-100 rounded-lg card-shadow border ${c.isKaaliRani?'kr-glow':'border-slate-300'}">${face(c)}</div>`;
+  });
+  const hand=gs.seats[me].hand,ok=gs.turn===me?legal(hand):[];
+  $('hand').innerHTML='';
+  hand.forEach((c,i)=>{
+    const b=document.createElement('button');
+    const can=ok.includes(i);
+    b.disabled=!can;
+    b.className=`card-hover relative w-16 h-24 md:w-20 md:h-28 shrink-0 bg-slate-100 rounded-lg card-shadow border ${c.isKaaliRani?'kr-glow':'border-slate-300'} ${can?'cursor-pointer':'opacity-60 cursor-not-allowed'}`;
+    b.innerHTML=face(c);
+    b.onclick=()=>isHost?playCard(me,i):sendHost({type:'PLAY',idx:i});
+    $('hand').appendChild(b);
+  });
+}
+function renderScores(){
+  const over=gs.status==='MATCH_OVER',rdOver=gs.status==='ROUND_OVER';
+  const min=Math.min(...gs.seats.map(s=>s.total));
+  $('score-title').innerText=over?'Final Results':rdOver?`Round ${gs.roundNo} Complete`:'Match Scores';
+  show('score-close',!(rdOver||over));
+  $('score-rows').innerHTML=[...gs.seats].sort((a,b)=>a.total-b.total).map(s=>{
+    const win=over&&s.total===min;
+    return `<div class="p-3 rounded-xl border flex justify-between items-center ${win?'bg-amber-500/20 border-amber-500':'bg-slate-950 border-slate-800'}">
+      <span class="text-sm font-bold">${s.name}${win?' <span class="text-xs bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black">WINNER</span>':''}</span>
+      <span class="text-xs text-slate-400">Round <b class="${s.round>0?'text-red-400':'text-emerald-400'}">${s.round}</b> · Total <b class="text-amber-300 text-sm">${s.total}</b></span></div>`;
+  }).join('');
+  const nb=$('next-btn');
+  show('next-btn',isHost&&rdOver);show('next-wait',!isHost&&rdOver);
+  nb.innerText=`Start Round ${gs.roundNo+1}`;
+}
+function toggleScores(){showScoresFlag=!showScoresFlag;render()}
+function copyCode(){navigator.clipboard&&navigator.clipboard.writeText(roomCode);toast('Room code copied!','success')}
+function toast(msg,type='info'){
+  const t=document.createElement('div');
+  const c=type==='error'?'bg-red-950 border-red-600 text-red-200':type==='success'?'bg-emerald-950 border-emerald-600 text-emerald-200':'bg-slate-900 border-amber-500/50 text-amber-300';
+  t.className=`px-4 py-3 rounded-xl border text-xs font-semibold shadow-2xl transition-opacity duration-300 ${c}`;
+  t.innerText=msg;$('toasts').appendChild(t);
+  setTimeout(()=>{t.style.opacity=0;setTimeout(()=>t.remove(),300)},3500);
+}
+</script>
 </body>
 </html>
