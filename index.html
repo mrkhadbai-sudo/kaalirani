@@ -150,7 +150,7 @@ function pushState(){
   if(!isHost)return;
   Object.entries(conns).forEach(([pid,c])=>{
     const i=gs.seats.findIndex(s=>s.id===pid);
-    if(c.open&&i>-1)c.send({type:'STATE',seat:i,gs:viewFor(i)});
+    try{if(c.open&&i>-1)c.send({type:'STATE',seat:i,gs:viewFor(i)})}catch(e){console.warn('send failed',e)}
   });
   render();
 }
@@ -158,6 +158,7 @@ function openPeer(id,cb){
   if(peer)peer.destroy();
   peer=id?new Peer(id):new Peer();
   peer.on('open',cb);
+  peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
   peer.on('connection',conn=>{
     if(!isHost)return;
     conn.on('data',d=>hostMsg(d,conn));
@@ -176,22 +177,26 @@ function startGroup(){
   const name=myName('Host');
   isHost=true;me=0;roomCode=genCode();
   openPeer('kaali-rani-'+roomCode,id=>{
+    if(gs.status!=='ENTRY')return;
     gs=newState();gs.status='LOBBY';
     gs.seats[0]={...blankSeat(),id,name,isHost:true};
     pushState();
+    setInterval(()=>{if(gs.status==='LOBBY')pushState()},3000);
   });
 }
 function joinGroup(){
   const code=$('code-input').value.trim().toUpperCase();
   if(code.length!==4)return toast('Enter the 4-character room code.','error');
   const name=myName('Guest');
-  isHost=false;roomCode=code;$('join-btn').disabled=true;
+  isHost=false;roomCode=code;$('join-btn').disabled=true;guestConn=null;
   openPeer(null,()=>{
-    guestConn=peer.connect('kaali-rani-'+code,{reliable:true});
-    const t=setTimeout(()=>{toast('Could not reach that room.','error');$('join-btn').disabled=false},8000);
-    guestConn.on('open',()=>{clearTimeout(t);guestConn.send({type:'JOIN',name})});
+    if(guestConn)return;
+    guestConn=peer.connect('kaali-rani-'+code,{reliable:true,serialization:'json'});
+    let joined=false;
+    const t=setTimeout(()=>{toast('Could not reach that room. Try again.','error');$('join-btn').disabled=false},10000);
+    guestConn.on('open',()=>{clearTimeout(t);const tryJoin=()=>{if(!joined){sendHost({type:'JOIN',name});setTimeout(tryJoin,2000)}};tryJoin()});
     guestConn.on('data',d=>{
-      if(d.type==='STATE'){gs=d.gs;me=d.seat;render()}
+      if(d.type==='STATE'){joined=true;gs=d.gs;me=d.seat;render()}
       if(d.type==='ERROR')toast(d.msg,'error');
     });
     guestConn.on('close',()=>{toast('Disconnected from room.','error');setTimeout(()=>location.reload(),2500)});
