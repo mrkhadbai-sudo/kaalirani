@@ -260,7 +260,7 @@ function doDeal(){isHost?deal():sendHost({type:'DEAL'})}
 function deal(){
   const d=createDeck();shuffle(d);
   gs.seats.forEach(s=>{s.hand=d.splice(0,13);sortHand(s.hand);s.round=0;s.tricks=0});
-  Object.assign(gs,{turn:gs.dist,lead:null,trick:[],done:0,broken:false,status:'PLAYING',msg:''});
+  Object.assign(gs,{turn:(gs.dist+1)%4,lead:null,trick:[],done:0,broken:false,status:'PLAYING',msg:''});
   pushState();scheduleAI();
 }
 function hostNextRound(){
@@ -274,11 +274,7 @@ function legal(hand){ // indices of playable cards
     const f=all.filter(i=>hand[i].suit===gs.lead);
     return f.length?f:all;
   }
-  if(gs.done===0||!gs.broken){
-    const ok=all.filter(i=>!isPen(hand[i]));
-    return ok.length?ok:all;
-  }
-  return all;
+  return all; // leading: any card may be led
 }
 function playCard(seat,idx){
   if(gs.status!=='PLAYING'||gs.turn!==seat||gs.trick.length>=4)return;
@@ -386,7 +382,7 @@ function renderTable(){
     }
   });
   const t=gs.seats[gs.turn];
-  $('status-text').innerText=(t?(gs.turn===me?'Your turn':t.name+"'s turn"):(gs.status==='PLAYING'?'Trick complete':'Round over'))+(gs.msg?' · '+gs.msg:'')+` · Round ${gs.roundNo}/${gs.totalRounds}`+(gs.broken?' · ♥ broken':'');
+  $('status-text').innerText=(t?(gs.turn===me?'Your turn':t.name+"'s turn"):(gs.status==='PLAYING'?'Trick complete':'Round over'))+(gs.msg?' · '+gs.msg:'')+` · Round ${gs.roundNo}/${gs.totalRounds}`;
   POS.forEach(p=>$('slot-'+p).innerHTML='');
   gs.trick.forEach(t=>{
     const c=t.card;
