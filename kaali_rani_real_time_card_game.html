@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kaali Rani - Real-Time Multiplayer Card Game</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- PeerJS for Zero-Setup WebRTC Cross-Device Multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #070a12;
+      color: #f8fafc;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+    }
+
+    .font-cinzel { font-family: 'Cinzel', serif; }
+
+    /* Deep Green Casino Felt Table */
+    .felt-table {
+      background: radial-gradient(circle at center, #15803d 0%, #166534 50%, #0f391e 80%, #051a0c 100%);
+      box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
+    }
+
+    /* Playing Card Architecture */
+    .playing-card {
+      width: 68px;
+      height: 102px;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      position: relative;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      cursor: pointer;
+      border: 1px solid #cbd5e1;
+      flex-shrink: 0;
+    }
+
+    @media (min-width: 640px) {
+      .playing-card {
+        width: 82px;
+        height: 122px;
+        border-radius: 10px;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .playing-card {
+        width: 94px;
+        height: 138px;
+      }
+    }
+
+    /* Interactive Playable Card Glows */
+    .playing-card.playable {
+      box-shadow: 0 0 0 3px #3b82f6, 0 8px 20px rgba(59, 130, 246, 0.5);
+      cursor: pointer;
+    }
+
+    .playing-card.playable:hover {
+      transform: translateY(-24px) scale(1.08) !important;
+      z-index: 60 !important;
+      box-shadow: 0 0 0 3px #60a5fa, 0 16px 30px rgba(59, 130, 246, 0.65);
+    }
+
+    .playing-card.disabled {
+      opacity: 0.5;
+      filter: grayscale(50%);
+      cursor: not-allowed;
+    }
+
+    /* Kaali Rani Distinct Purple Glow */
+    .playing-card.kaali-rani-card {
+      border: 2px solid #7c3aed;
+      background: linear-gradient(135deg, #ffffff 0%, #f3e8ff 100%);
+    }
+
+    .playing-card.kaali-rani-card.playable {
+      box-shadow: 0 0 0 3px #a855f7, 0 10px 24px rgba(168, 85, 247, 0.6);
+    }
+
+    .playing-card.red-suit { color: #dc2626; }
+    .playing-card.black-suit { color: #0f172a; }
+
+    /* Corner Rank/Suit Indices */
+    .card-corner {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 0.85;
+      font-weight: 800;
+      font-size: 0.78rem;
+    }
+    @media (min-width: 640px) {
+      .card-corner { font-size: 0.92rem; }
+    }
+    .card-corner.top-left { top: 4px; left: 5px; }
+    .card-corner.bottom-right { bottom: 4px; right: 5px; transform: rotate(180deg); }
+
+    /* Hand Dock Negative Margin Overlap */
+    .hand-dock {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      padding-bottom: 6px;
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: auto;
+      scroll-behavior: smooth;
+    }
+
+    .hand-dock .playing-card {
+      margin-left: -26px;
+    }
+    @media (min-width: 640px) {
+      .hand-dock .playing-card { margin-left: -30px; }
+    }
+    @media (min-width: 1024px) {
+      .hand-dock .playing-card { margin-left: -34px; }
+    }
+    .hand-dock .playing-card:first-child {
+      margin-left: 0 !important;
+    }
+
+    /* Radial Center Trick Slots */
+    .trick-slot-north { top: 8%; left: 50%; transform: translateX(-50%); }
+    .trick-slot-south { bottom: 8%; left: 50%; transform: translateX(-50%); }
+    .trick-slot-west  { left: 14%; top: 50%; transform: translateY(-50%); }
+    .trick-slot-east  { right: 14%; top: 50%; transform: translateY(-50%); }
+
+    /* Floating Point Animations */
+    @keyframes scoreFloat {
+      0% { opacity: 0; transform: translate(-50%, 10px) scale(0.8); }
+      20% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); }
+      80% { opacity: 1; transform: translate(-50%, -25px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -45px) scale(0.85); }
+    }
+
+    .animate-score-popup {
+      animation: scoreFloat 1.8s forwards cubic-bezier(0.16, 1, 0.3, 1);
+    }
+  </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col justify-between">
+
+  <!-- LANDING & ENTRY MODAL (No Password Needed) -->
+  <div id="landingModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
+      
+      <!-- Ambient Glow Effects -->
+      <div class="absolute -top-12 -left-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+      <div class="absolute -bottom-12 -right-12 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+      <!-- Header Title -->
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl shadow-xl mb-2">
+          <span class="text-3xl">♛</span>
+        </div>
+        <h1 class="text-3xl font-extrabold font-cinzel text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 tracking-wider">KAALI RANI</h1>
+        <p class="text-xs text-slate-400 mt-1 font-medium">Real-Time Cross-Device Card Game</p>
+      </div>
+
+      <!-- STEP 1: DISPLAY NAME & GROUP SELECTION -->
+      <div id="stepNameChoice" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Your Display Name</label>
+          <input id="displayNameInput" type="text" placeholder="e.g. Royal Player" maxlength="15"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 transition">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <button onclick="handleStartGroup()" class="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-2xl shadow-lg transition active:scale-95 group">
+            <span class="text-2xl mb-1 group-hover:scale-110 transition">👑</span>
+            <span class="font-bold text-sm">Start a Group</span>
+            <span class="text-[10px] text-amber-200/80">Host new room code</span>
+          </button>
+
+          <button onclick="showJoinInput()" class="flex flex-col items-center justify-center p-4 bg-slate-800 hover:bg-slate-700/80 text-white border border-slate-700 rounded-2xl shadow transition active:scale-95 group">
+            <span class="text-2xl mb-1 group-hover:scale-110 transition">🔑</span>
+            <span class="font-bold text-sm">Join a Group</span>
+            <span class="text-[10px] text-slate-400">Enter room code</span>
+          </button>
+        </div>
+
+        <!-- Join Room Input Section -->
+        <div id="joinCodeSection" class="hidden space-y-2 pt-1 bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/80">
+          <label class="block text-xs font-semibold text-amber-400">Enter 4-Character Room Code:</label>
+          <div class="flex gap-2">
+            <input id="roomCodeInput" type="text" placeholder="4921" maxlength="6" class="uppercase tracking-widest bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 flex-1">
+            <button onclick="handleJoinGroup()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-lg text-sm transition">Join</button>
+          </div>
+        </div>
+
+        <div class="relative flex py-1 items-center">
+          <div class="flex-grow border-t border-slate-800"></div>
+          <span class="flex-shrink mx-3 text-[10px] text-slate-500 font-bold uppercase">Or Solo Mode</span>
+          <div class="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        <button onclick="startSoloVsAI()" class="w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl text-xs border border-slate-700 transition flex items-center justify-center gap-2">
+          <span>🤖</span> Play Offline Instant vs 3 Bots
+        </button>
+      </div>
+
+      <!-- STEP 2: GROUP WAITING LOBBY -->
+      <div id="stepGroupLobby" class="hidden space-y-5">
+        <div class="text-center bg-slate-800/90 border border-slate-700 rounded-2xl p-4 shadow-inner">
+          <span class="text-[11px] text-slate-400 font-bold uppercase tracking-widest">Share Room Code With Friends</span>
+          <div class="flex items-center justify-center gap-3 mt-1">
+            <span id="displayRoomCode" class="text-3xl font-extrabold font-mono text-amber-400 tracking-widest">KR-0000</span>
+            <button onclick="copyRoomCode()" class="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg text-xs text-slate-200 transition" title="Copy Code">📋</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Connected Players (<span id="playerCount">1</span>/4)</span>
+            <span id="p2pStatus" class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live P2P Ready
+            </span>
+          </div>
+          <div id="lobbyPlayerList" class="space-y-2">
+            <!-- Dynamic Real-Time Connected Players -->
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-2">
+          <button id="startLobbyBtn" onclick="launchGroupGame()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg text-sm flex items-center justify-center gap-2">
+            <span>🚀</span> Start Game (Fill Empty Seats with Bots)
+          </button>
+          <button onclick="leaveLobby()" class="w-full text-xs text-slate-400 hover:text-rose-400 transition py-1">Leave Room</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MAIN CASINO FELT GAME TABLE -->
+  <main class="relative flex-1 felt-table flex flex-col justify-between p-3 md:p-6 overflow-hidden">
+    
+    <!-- TOP PLAYER (NORTH) -->
+    <div class="flex flex-col items-center z-10">
+      <div id="badge-north" class="bg-slate-900/90 border border-slate-700/80 px-4 py-1.5 rounded-full text-xs font-semibold text-slate-200 shadow-xl flex items-center gap-2">
+        <span id="name-north">North (Bot)</span>
+        <span class="text-slate-500">•</span>
+        <span id="score-north" class="text-amber-400 font-bold">0 pts</span>
+      </div>
+      <div id="cardsLeft-north" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
+    </div>
+
+    <!-- WEST & EAST PLAYER BADGES -->
+    <div class="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
+      <div id="badge-west" class="bg-slate-900/90 border border-slate-700/80 px-3 py-2 rounded-2xl text-xs font-semibold text-slate-200 shadow-xl flex flex-col items-center">
+        <span id="name-west">West</span>
+        <span id="score-west" class="text-amber-400 font-bold mt-0.5">0 pts</span>
+      </div>
+      <div id="cardsLeft-west" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
+    </div>
+
+    <div class="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
+      <div id="badge-east" class="bg-slate-900/90 border border-slate-700/80 px-3 py-2 rounded-2xl text-xs font-semibold text-slate-200 shadow-xl flex flex-col items-center">
+        <span id="name-east">East</span>
+        <span id="score-east" class="text-amber-400 font-bold mt-0.5">0 pts</span>
+      </div>
+      <div id="cardsLeft-east" class="text-[10px] text-emerald-200/80 font-medium mt-1">13 cards</div>
+    </div>
+
+    <!-- CENTER FELT TRICK AREA -->
+    <div class="relative flex-1 flex items-center justify-center my-2">
+      
+      <!-- Watermark Logo -->
+      <div class="text-center opacity-15 pointer-events-none">
+        <h2 class="text-4xl sm:text-6xl md:text-7xl font-black font-cinzel text-amber-200 tracking-widest">KAALI RANI</h2>
+        <p class="text-xs uppercase tracking-widest text-amber-100 font-bold mt-1">Trick <span id="currentTrickNum">1</span> of 13</p>
+      </div>
+
+      <!-- Turn Banner -->
+      <div id="turnIndicator" class="absolute top-2 bg-slate-950/90 border border-amber-500/60 text-amber-300 px-5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+        <span id="turnIndicatorText">Dealt 13 Cards! Ready to play...</span>
+      </div>
+
+      <!-- Trick Winner Announcement Banner -->
+      <div id="trickBanner" class="hidden absolute z-40 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black px-6 py-2.5 rounded-full shadow-2xl text-sm md:text-base border-2 border-amber-200 tracking-wide transform -translate-y-4">
+        🏆 Player Wins Trick!
+      </div>
+
+      <!-- Score Popup Floating Effect -->
+      <div id="scorePopup" class="hidden absolute z-50 left-1/2 top-1/2 -translate-x-1/2 font-black text-2xl tracking-wider animate-score-popup pointer-events-none drop-shadow-md">
+        +13 Pts
+      </div>
+
+      <!-- 4 Radial Trick Slots -->
+      <div id="trickCardNorth" class="absolute trick-slot-north hidden"></div>
+      <div id="trickCardSouth" class="absolute trick-slot-south hidden"></div>
+      <div id="trickCardWest"  class="absolute trick-slot-west hidden"></div>
+      <div id="trickCardEast"  class="absolute trick-slot-east hidden"></div>
+    </div>
+
+    <!-- BOTTOM PLAYER (YOU / SOUTH) -->
+    <div class="flex flex-col items-center z-20 w-full">
+      <div id="badge-south" class="bg-slate-900/95 border border-amber-500/80 px-5 py-1.5 rounded-full text-xs font-bold text-amber-300 shadow-xl mb-2 flex items-center gap-3">
+        <span id="name-south">You (South)</span>
+        <span class="text-amber-500/50">•</span>
+        <span id="score-south" class="text-amber-400 font-extrabold text-sm">0 pts</span>
+      </div>
+
+      <!-- Player Hand Dock (All 13 Dealt Cards Rendered Here) -->
+      <div id="playerHand" class="hand-dock">
+        <!-- Dynamic Cards -->
+      </div>
+    </div>
+  </main>
+
+  <!-- ROUND SUMMARY MODAL -->
+  <div id="roundSummaryModal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl text-center">
+      <h2 class="text-2xl font-bold font-cinzel text-amber-400 mb-1">Round Complete!</h2>
+      <p class="text-xs text-slate-400 mb-4">Point cards collected during this hand</p>
+
+      <div class="bg-slate-800/80 rounded-2xl border border-slate-700/80 overflow-hidden mb-5">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-950/60 text-slate-400 uppercase font-bold text-[10px] tracking-wider">
+            <tr>
+              <th class="p-3">Player</th>
+              <th class="p-3">Cards Picked</th>
+              <th class="p-3 text-right">Round</th>
+              <th class="p-3 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="roundScoresTable" class="divide-y divide-slate-700/50 font-medium">
+            <!-- Dynamic Score Rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <button id="nextRoundBtn" onclick="requestNextRound()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition shadow-lg text-sm">
+        Next Hand →
+      </button>
+    </div>
+  </div>
+
+  <!-- GAME OVER CHAMPION MODAL -->
+  <div id="gameOverModal" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 max-w-md w-full shadow-2xl text-center">
+      <div class="text-5xl mb-2">🏆</div>
+      <h2 class="text-3xl font-black font-cinzel text-amber-400">GAME OVER</h2>
+      <p id="winnerAnnouncement" class="text-sm font-semibold text-slate-300 my-2">Player is the Kaali Rani Champion!</p>
+
+      <div id="finalRankings" class="bg-slate-800/80 rounded-2xl border border-slate-700 p-3 my-4 space-y-2 text-xs">
+        <!-- Ranked Players -->
+      </div>
+
+      <button onclick="resetFullMatch()" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 rounded-xl transition shadow-xl text-sm">
+        Play Again 🔄
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       KAALI RANI NETWORK & GAME ENGINE (PEERJS REAL-TIME MULTIPLAYER)
+       ========================================================================== */
+
+    const SUITS = ['♠', '♥', '♦', '♣'];
+    const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+    const RANK_VALUES = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+
+    // App Local State
+    let myDisplayName = "Player";
+    let myPeerId = null;
+    let roomCode = null;
+    let isHost = false;
+    let peer = null;
+    let connections = []; // Host keeps track of all joined client connections
+    let hostConn = null;  // Client reference to host connection
+
+    // Master Game State (Synchronized across all connected devices)
+    let gameState = {
+      status: 'LOBBY', // LOBBY, PLAYING, ROUND_END, GAME_OVER
+      roomCode: null,
+      players: [
+        { seat: 0, peerId: null, name: 'You', isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] },
+        { seat: 1, peerId: null, name: 'West (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] },
+        { seat: 2, peerId: null, name: 'North (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] },
+        { seat: 3, peerId: null, name: 'East (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] }
+      ],
+      hands: { 0: [], 1: [], 2: [], 3: [] },
+      currentTrickNumber: 1,
+      currentTurnSeat: 0,
+      ledSuit: null,
+      currentTrickCards: [], // [{ seat: 0, card: {...} }]
+      isProcessingTrick: false
+    };
+
+    let mySeat = 0; // Local seat index (0..3)
+
+    /* --- PEERJS NETWORKING LAYER --- */
+
+    function getPeerIDForRoom(code) {
+      return `kaali-rani-room-v2-${code.toUpperCase().trim()}`;
+    }
+
+    function showJoinInput() {
+      document.getElementById('joinCodeSection').classList.toggle('hidden');
+    }
+
+    function getEnteredName() {
+      const input = document.getElementById('displayNameInput').value.trim();
+      return input ? input.substring(0, 15) : "Player " + Math.floor(100 + Math.random() * 900);
+    }
+
+    // Host starts a new group
+    function handleStartGroup() {
+      myDisplayName = getEnteredName();
+      roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+      isHost = true;
+      mySeat = 0;
+
+      const hostPeerId = getPeerIDForRoom(roomCode);
+      peer = new Peer(hostPeerId);
+
+      peer.on('open', (id) => {
+        myPeerId = id;
+        gameState.roomCode = roomCode;
+        gameState.players[0] = { seat: 0, peerId: id, name: myDisplayName, isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] };
+
+        document.getElementById('displayRoomCode').innerText = `KR-${roomCode}`;
+        document.getElementById('stepNameChoice').classList.add('hidden');
+        document.getElementById('stepGroupLobby').classList.remove('hidden');
+        updateLobbyUI();
+      });
+
+      peer.on('connection', (conn) => {
+        conn.on('open', () => {
+          connections.push(conn);
+        });
+
+        conn.on('data', (data) => {
+          handleIncomingHostMessage(conn, data);
+        });
+
+        conn.on('close', () => {
+          connections = connections.filter(c => c !== conn);
+          // Remove player from lobby
+          const pIdx = gameState.players.findIndex(p => p.peerId === conn.peer);
+          if (pIdx !== -1 && gameState.status === 'LOBBY') {
+            gameState.players[pIdx] = { seat: pIdx, peerId: null, name: `Bot ${pIdx}`, isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
+            broadcastGameState();
+            updateLobbyUI();
+          }
+        });
+      });
+
+      peer.on('error', (err) => {
+        console.warn("PeerJS Host Error:", err);
+        if (err.type === 'unavailable-id') {
+          // Retry generating a new room code
+          handleStartGroup();
+        }
+      });
+    }
+
+    // Client joins an existing group
+    function handleJoinGroup() {
+      const enteredCode = document.getElementById('roomCodeInput').value.trim().toUpperCase().replace('KR-', '');
+      if (!enteredCode) {
+        showToast("Please enter a 4-digit room code!");
+        return;
+      }
+
+      myDisplayName = getEnteredName();
+      roomCode = enteredCode;
+      isHost = false;
+
+      peer = new Peer(); // Auto-assigned client peer ID
+
+      peer.on('open', (id) => {
+        myPeerId = id;
+        const targetHostPeerId = getPeerIDForRoom(roomCode);
+        hostConn = peer.connect(targetHostPeerId);
+
+        hostConn.on('open', () => {
+          // Send Join Request
+          hostConn.send({ type: 'JOIN', name: myDisplayName, peerId: myPeerId });
+          document.getElementById('displayRoomCode').innerText = `KR-${roomCode}`;
+          document.getElementById('stepNameChoice').classList.add('hidden');
+          document.getElementById('stepGroupLobby').classList.remove('hidden');
+          document.getElementById('startLobbyBtn').classList.add('hidden'); // Only host sees start button
+        });
+
+        hostConn.on('data', (data) => {
+          handleIncomingClientMessage(data);
+        });
+
+        hostConn.on('close', () => {
+          showToast("Host disconnected from room!");
+        });
+      });
+
+      peer.on('error', (err) => {
+        showToast("Could not connect to room. Check code!");
+      });
+    }
+
+    function handleIncomingHostMessage(conn, data) {
+      if (data.type === 'JOIN') {
+        // Find first empty seat
+        const emptySeatIndex = gameState.players.findIndex(p => p.isBot);
+        if (emptySeatIndex !== -1 && gameState.status === 'LOBBY') {
+          gameState.players[emptySeatIndex] = {
+            seat: emptySeatIndex,
+            peerId: data.peerId,
+            name: data.name,
+            isBot: false,
+            totalScore: 0,
+            roundScore: 0,
+            cardsPicked: []
+          };
+          broadcastGameState();
+          updateLobbyUI();
+        }
+      } else if (data.type === 'ACTION_PLAY_CARD') {
+        if (data.seat === gameState.currentTurnSeat && !gameState.isProcessingTrick) {
+          executePlayCard(data.seat, data.card);
+        }
+      } else if (data.type === 'ACTION_NEXT_ROUND') {
+        if (gameState.status === 'ROUND_END') {
+          startNextRound();
+        }
+      }
+    }
+
+    function handleIncomingClientMessage(data) {
+      if (data.type === 'STATE_UPDATE') {
+        gameState = data.gameState;
+        
+        // Find my assigned seat
+        const me = gameState.players.find(p => p.peerId === myPeerId);
+        if (me) mySeat = me.seat;
+
+        if (gameState.status === 'LOBBY') {
+          updateLobbyUI();
+        } else if (gameState.status === 'PLAYING') {
+          document.getElementById('landingModal').classList.add('hidden');
+          renderTableState();
+        } else if (gameState.status === 'ROUND_END') {
+          renderRoundSummary();
+        } else if (gameState.status === 'GAME_OVER') {
+          renderGameOver();
+        }
+      }
+    }
+
+    function broadcastGameState() {
+      if (!isHost) return;
+      connections.forEach(conn => {
+        if (conn.open) {
+          conn.send({ type: 'STATE_UPDATE', gameState: gameState });
+        }
+      });
+      // Also update host UI locally
+      if (gameState.status === 'LOBBY') {
+        updateLobbyUI();
+      } else if (gameState.status === 'PLAYING') {
+        renderTableState();
+      } else if (gameState.status === 'ROUND_END') {
+        renderRoundSummary();
+      } else if (gameState.status === 'GAME_OVER') {
+        renderGameOver();
+      }
+    }
+
+    function updateLobbyUI() {
+      const container = document.getElementById('lobbyPlayerList');
+      const humanPlayers = gameState.players.filter(p => !p.isBot);
+      document.getElementById('playerCount').innerText = humanPlayers.length;
+
+      container.innerHTML = gameState.players.map((p, i) => `
+        <div class="flex items-center justify-between bg-slate-800/90 border border-slate-700/80 px-3.5 py-2.5 rounded-xl">
+          <div class="flex items-center gap-2.5">
+            <span class="w-7 h-7 rounded-full ${i === 0 ? 'bg-amber-500' : 'bg-indigo-600'} flex items-center justify-center text-xs font-bold text-slate-950">
+              ${i === 0 ? '👑' : i + 1}
+            </span>
+            <span class="font-semibold text-sm text-slate-200">${p.name}</span>
+          </div>
+          <span class="text-[11px] font-bold px-2 py-0.5 rounded-md ${p.isBot ? 'bg-slate-700 text-slate-400' : 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'}">
+            ${p.isBot ? 'AI Bot Seat' : 'Connected'}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function startSoloVsAI() {
+      myDisplayName = getEnteredName();
+      isHost = true;
+      mySeat = 0;
+      gameState.players[0] = { seat: 0, peerId: 'local', name: myDisplayName, isBot: false, totalScore: 0, roundScore: 0, cardsPicked: [] };
+      gameState.players[1] = { seat: 1, peerId: null, name: 'West (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
+      gameState.players[2] = { seat: 2, peerId: null, name: 'North (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
+      gameState.players[3] = { seat: 3, peerId: null, name: 'East (Bot)', isBot: true, totalScore: 0, roundScore: 0, cardsPicked: [] };
+
+      document.getElementById('landingModal').classList.add('hidden');
+      startNewMatch();
+    }
+
+    function launchGroupGame() {
+      if (!isHost) return;
+      document.getElementById('landingModal').classList.add('hidden');
+      startNewMatch();
+    }
+
+    function copyRoomCode() {
+      if (roomCode) {
+        navigator.clipboard ? navigator.clipboard.writeText(`KR-${roomCode}`) : document.execCommand('copy');
+        showToast("Room code copied to clipboard!");
+      }
+    }
+
+    function leaveLobby() {
+      if (peer) peer.destroy();
+      document.getElementById('stepGroupLobby').classList.add('hidden');
+      document.getElementById('stepNameChoice').classList.remove('hidden');
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('turnIndicatorText');
+      if (el) el.innerText = msg;
+    }
+
+    /* --- CARD ENGINE & GAME LOGIC --- */
+
+    function create52CardDeck() {
+      const deck = [];
+      for (let suit of SUITS) {
+        for (let rank of RANKS) {
+          const isKaaliRani = (suit === '♠' && rank === 'Q');
+          const isJackDiamonds = (suit === '♦' && rank === 'J');
+          const isHeart = (suit === '♥');
+          
+          let points = 0;
+          if (isKaaliRani) points = 13;
+          else if (isJackDiamonds) points = -10;
+          else if (isHeart) points = 1;
+
+          deck.push({
+            suit,
+            rank,
+            value: RANK_VALUES[rank],
+            isKaaliRani,
+            isJackDiamonds,
+            isHeart,
+            points,
+            id: `${rank}_${suit}`
+          });
+        }
+      }
+      return deck;
+    }
+
+    function shuffleDeck(deck) {
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      return deck;
+    }
+
+    function startNewMatch() {
+      gameState.players.forEach(p => {
+        p.totalScore = 0;
+        p.roundScore = 0;
+      });
+      startNextRound();
+    }
+
+    function startNextRound() {
+      if (!isHost) return;
+      gameState.status = 'PLAYING';
+      gameState.currentTrickNumber = 1;
+      gameState.currentTrickCards = [];
+      gameState.ledSuit = null;
+      gameState.isProcessingTrick = false;
+
+      gameState.players.forEach(p => {
+        p.roundScore = 0;
+        p.cardsPicked = [];
+      });
+
+      // Deal 52 cards evenly (13 cards to all 4 seats)
+      const deck = shuffleDeck(create52CardDeck());
+      for (let i = 0; i < 52; i++) {
+        const seat = i % 4;
+        if (!gameState.hands[seat]) gameState.hands[seat] = [];
+        if (i < 4) gameState.hands[seat] = []; // Reset hand
+        gameState.hands[seat].push(deck[i]);
+      }
+
+      // Sort hands
+      for (let seat = 0; seat < 4; seat++) {
+        sortHand(gameState.hands[seat]);
+      }
+
+      // Starter leader (2♣ or random)
+      let leaderSeat = 0;
+      for (let seat = 0; seat < 4; seat++) {
+        if (gameState.hands[seat].some(c => c.suit === '♣' && c.rank === '2')) {
+          leaderSeat = seat;
+          break;
+        }
+      }
+      gameState.currentTurnSeat = leaderSeat;
+
+      broadcastGameState();
+
+      if (gameState.players[gameState.currentTurnSeat].isBot) {
+        setTimeout(processBotTurn, 1000);
+      }
+    }
+
+    function sortHand(hand) {
+      const suitOrder = { '♠': 1, '♥': 2, '♣': 3, '♦': 4 };
+      hand.sort((a, b) => {
+        if (suitOrder[a.suit] !== suitOrder[b.suit]) {
+          return suitOrder[a.suit] - suitOrder[b.suit];
+        }
+        return a.value - b.value;
+      });
+    }
+
+    /* --- RELATIVE POSITIONING & TABLE RENDERING --- */
+
+    // Map global seats (0..3) relative to local player's seat (mySeat)
+    function getRelativeSeat(targetSeat) {
+      const positions = ['south', 'west', 'north', 'east'];
+      const relIndex = (targetSeat - mySeat + 4) % 4;
+      return positions[relIndex];
+    }
+
+    function renderTableState() {
+      // 1. Update Badges & Names
+      for (let seat = 0; seat < 4; seat++) {
+        const p = gameState.players[seat];
+        const relPos = getRelativeSeat(seat);
+
+        const nameEl = document.getElementById(`name-${relPos}`);
+        const scoreEl = document.getElementById(`score-${relPos}`);
+        const cardsLeftEl = document.getElementById(`cardsLeft-${relPos}`);
+
+        if (nameEl) nameEl.innerText = p.name;
+        if (scoreEl) scoreEl.innerText = `${p.totalScore + p.roundScore} pts`;
+        if (cardsLeftEl && gameState.hands[seat]) {
+          cardsLeftEl.innerText = `${gameState.hands[seat].length} cards`;
+        }
+      }
+
+      // 2. Render Player Hand (13 cards in South dock)
+      renderLocalHand();
+
+      // 3. Render Center Trick Cards
+      clearTrickSlots();
+      gameState.currentTrickCards.forEach(tc => {
+        const relPos = getRelativeSeat(tc.seat);
+        renderTrickSlot(relPos, tc.card);
+      });
+
+      // 4. Turn Banner
+      const currentTurnPlayer = gameState.players[gameState.currentTurnSeat];
+      const indicatorText = document.getElementById('turnIndicatorText');
+      document.getElementById('currentTrickNum').innerText = gameState.currentTrickNumber;
+
+      if (gameState.currentTurnSeat === mySeat) {
+        indicatorText.innerText = "👉 YOUR TURN (Play a card)";
+      } else {
+        indicatorText.innerText = `⏳ ${currentTurnPlayer.name}'s turn...`;
+      }
+    }
+
+    function renderLocalHand() {
+      const dock = document.getElementById('playerHand');
+      dock.innerHTML = '';
+
+      const myHand = gameState.hands[mySeat] || [];
+      const isMyTurn = (gameState.currentTurnSeat === mySeat) && !gameState.isProcessingTrick;
+
+      myHand.forEach((card, index) => {
+        const isRed = card.suit === '♥' || card.suit === '♦';
+        const isPlayable = isMyTurn && isValidPlay(card, myHand, gameState.ledSuit);
+
+        const cardEl = document.createElement('div');
+        let cardClasses = `playing-card ${isRed ? 'red-suit' : 'black-suit'}`;
+        if (card.isKaaliRani) cardClasses += ' kaali-rani-card';
+        if (isPlayable) cardClasses += ' playable';
+        else if (isMyTurn) cardClasses += ' disabled';
+
+        cardEl.className = cardClasses;
+
+        let centerSymbol = card.suit;
+        if (card.rank === 'Q' && card.suit === '♠') centerSymbol = '👑';
+        else if (card.rank === 'K') centerSymbol = '♚';
+        else if (card.rank === 'J') centerSymbol = '♟';
+
+        cardEl.innerHTML = `
+          <div class="card-corner top-left">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+          <div class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black">
+            ${centerSymbol}
+          </div>
+          <div class="card-corner bottom-right">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+        `;
+
+        if (isPlayable) {
+          cardEl.onclick = () => sendPlayCardAction(card);
+        }
+
+        dock.appendChild(cardEl);
+      });
+    }
+
+    function isValidPlay(card, hand, ledSuit) {
+      if (!ledSuit) return true;
+      const hasLedSuit = hand.some(c => c.suit === ledSuit);
+      if (hasLedSuit) {
+        return card.suit === ledSuit;
+      }
+      return true;
+    }
+
+    function sendPlayCardAction(card) {
+      if (isHost) {
+        executePlayCard(mySeat, card);
+      } else if (hostConn && hostConn.open) {
+        hostConn.send({ type: 'ACTION_PLAY_CARD', seat: mySeat, card: card });
+      }
+    }
+
+    function executePlayCard(seat, card) {
+      if (!isHost) return;
+
+      // Remove card from player hand
+      const hand = gameState.hands[seat];
+      const cardIndex = hand.findIndex(c => c.id === card.id);
+      if (cardIndex !== -1) hand.splice(cardIndex, 1);
+
+      if (gameState.currentTrickCards.length === 0) {
+        gameState.ledSuit = card.suit;
+      }
+
+      gameState.currentTrickCards.push({ seat, card });
+
+      if (gameState.currentTrickCards.length === 4) {
+        gameState.isProcessingTrick = true;
+        broadcastGameState();
+        setTimeout(resolveTrickWinner, 1300);
+      } else {
+        gameState.currentTurnSeat = (gameState.currentTurnSeat + 1) % 4;
+        broadcastGameState();
+
+        if (gameState.players[gameState.currentTurnSeat].isBot) {
+          setTimeout(processBotTurn, 800);
+        }
+      }
+    }
+
+    function processBotTurn() {
+      if (!isHost || gameState.isProcessingTrick) return;
+
+      const botSeat = gameState.currentTurnSeat;
+      const botHand = gameState.hands[botSeat];
+      const validCards = botHand.filter(c => isValidPlay(c, botHand, gameState.ledSuit));
+
+      let chosenCard = null;
+
+      if (!gameState.ledSuit) {
+        validCards.sort((a, b) => a.value - b.value);
+        chosenCard = validCards[0];
+      } else {
+        const containsPenalty = gameState.currentTrickCards.some(tc => tc.card.points > 0);
+        const hasLedSuit = botHand.some(c => c.suit === gameState.ledSuit);
+
+        if (hasLedSuit) {
+          const highestLedVal = Math.max(...gameState.currentTrickCards.filter(tc => tc.card.suit === gameState.ledSuit).map(tc => tc.card.value));
+          if (containsPenalty) {
+            const underCards = validCards.filter(c => c.value < highestLedVal);
+            if (underCards.length > 0) {
+              underCards.sort((a, b) => b.value - a.value);
+              chosenCard = underCards[0];
+            } else {
+              validCards.sort((a, b) => b.value - a.value);
+              chosenCard = validCards[0];
+            }
+          } else {
+            validCards.sort((a, b) => a.value - b.value);
+            chosenCard = validCards[0];
+          }
+        } else {
+          const kaaliRani = validCards.find(c => c.isKaaliRani);
+          if (kaaliRani) {
+            chosenCard = kaaliRani;
+          } else {
+            const hearts = validCards.filter(c => c.isHeart).sort((a, b) => b.value - a.value);
+            if (hearts.length > 0) {
+              chosenCard = hearts[0];
+            } else {
+              validCards.sort((a, b) => b.value - a.value);
+              chosenCard = validCards[0];
+            }
+          }
+        }
+      }
+
+      executePlayCard(botSeat, chosenCard);
+    }
+
+    function resolveTrickWinner() {
+      if (!isHost) return;
+
+      let winningPlay = gameState.currentTrickCards[0];
+      for (let i = 1; i < gameState.currentTrickCards.length; i++) {
+        const play = gameState.currentTrickCards[i];
+        if (play.card.suit === gameState.ledSuit && play.card.value > winningPlay.card.value) {
+          winningPlay = play;
+        }
+      }
+
+      const winnerPlayer = gameState.players[winningPlay.seat];
+      let trickPoints = 0;
+
+      gameState.currentTrickCards.forEach(tc => {
+        trickPoints += tc.card.points;
+        if (tc.card.points !== 0) {
+          winnerPlayer.cardsPicked.push(tc.card);
+        }
+      });
+
+      winnerPlayer.roundScore += trickPoints;
+
+      gameState.currentTrickCards = [];
+      gameState.ledSuit = null;
+      gameState.isProcessingTrick = false;
+      gameState.currentTurnSeat = winningPlay.seat;
+      gameState.currentTrickNumber++;
+
+      if (gameState.currentTrickNumber > 13) {
+        endRound();
+      } else {
+        broadcastGameState();
+        if (gameState.players[gameState.currentTurnSeat].isBot) {
+          setTimeout(processBotTurn, 800);
+        }
+      }
+    }
+
+    function renderTrickSlot(position, card) {
+      const slotMap = { south: 'trickCardSouth', west: 'trickCardWest', north: 'trickCardNorth', east: 'trickCardEast' };
+      const slotEl = document.getElementById(slotMap[position]);
+      if (!slotEl) return;
+
+      slotEl.classList.remove('hidden');
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      let centerSymbol = card.suit;
+      if (card.rank === 'Q' && card.suit === '♠') centerSymbol = '👑';
+
+      slotEl.innerHTML = `
+        <div class="playing-card ${isRed ? 'red-suit' : 'black-suit'} ${card.isKaaliRani ? 'kaali-rani-card' : ''}">
+          <div class="card-corner top-left">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+          <div class="absolute inset-0 flex items-center justify-center text-xl font-black">${centerSymbol}</div>
+          <div class="card-corner bottom-right">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function clearTrickSlots() {
+      ['trickCardSouth', 'trickCardWest', 'trickCardNorth', 'trickCardEast'].forEach(id => {
+        const slot = document.getElementById(id);
+        if (slot) {
+          slot.classList.add('hidden');
+          slot.innerHTML = '';
+        }
+      });
+    }
+
+    function endRound() {
+      gameState.status = 'ROUND_END';
+
+      // Moon Shoot check
+      gameState.players.forEach(p => {
+        const hasKaaliRani = p.cardsPicked.some(c => c.isKaaliRani);
+        const heartCount = p.cardsPicked.filter(c => c.isHeart).length;
+        if (hasKaaliRani && heartCount === 13) {
+          p.roundScore = 0;
+          gameState.players.forEach(o => {
+            if (o.seat !== p.seat) o.roundScore = 26;
+          });
+        }
+      });
+
+      gameState.players.forEach(p => p.totalScore += p.roundScore);
+      broadcastGameState();
+    }
+
+    function renderRoundSummary() {
+      const tbody = document.getElementById('roundScoresTable');
+      tbody.innerHTML = gameState.players.map(p => {
+        const pickedText = p.cardsPicked.map(c => c.rank + c.suit).join(' ') || 'None';
+        return `
+          <tr class="border-b border-slate-800">
+            <td class="p-3 font-bold text-slate-200">${p.name}</td>
+            <td class="p-3 text-[11px] text-amber-300 max-w-[120px] truncate">${pickedText}</td>
+            <td class="p-3 text-right font-bold ${p.roundScore > 0 ? 'text-rose-400' : 'text-emerald-400'}">${p.roundScore > 0 ? '+' : ''}${p.roundScore}</td>
+            <td class="p-3 text-right font-extrabold text-amber-400">${p.totalScore}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('roundSummaryModal').classList.remove('hidden');
+
+      const isGameOver = gameState.players.some(p => p.totalScore >= 52);
+      if (isGameOver) {
+        gameState.status = 'GAME_OVER';
+        if (isHost) broadcastGameState();
+      }
+    }
+
+    function requestNextRound() {
+      if (gameState.status === 'GAME_OVER') {
+        renderGameOver();
+      } else if (isHost) {
+        startNextRound();
+      } else if (hostConn) {
+        hostConn.send({ type: 'ACTION_NEXT_ROUND' });
+      }
+    }
+
+    function renderGameOver() {
+      document.getElementById('roundSummaryModal').classList.add('hidden');
+
+      const ranked = [...gameState.players].sort((a, b) => a.totalScore - b.totalScore);
+      const winner = ranked[0];
+
+      document.getElementById('winnerAnnouncement').innerText = `🎉 ${winner.name} wins the match with ${winner.totalScore} points!`;
+
+      const rankContainer = document.getElementById('finalRankings');
+      rankContainer.innerHTML = ranked.map((p, idx) => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl ${idx === 0 ? 'bg-amber-500/20 border border-amber-500/60' : 'bg-slate-900/60'}">
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</span>
+            <span class="font-bold text-slate-200">${p.name}</span>
+          </div>
+          <span class="font-black text-amber-400">${p.totalScore} pts</span>
+        </div>
+      `).join('');
+
+      document.getElementById('gameOverModal').classList.remove('hidden');
+    }
+
+    function resetFullMatch() {
+      document.getElementById('gameOverModal').classList.add('hidden');
+      if (isHost) startNewMatch();
+    }
+  </script>
+</body>
+</html>
