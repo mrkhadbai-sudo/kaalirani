@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kaali Rani - Multiplayer Evasion Card Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      user-select: none;
+    }
+
+    .font-cinzel { font-family: 'Cinzel', serif; }
+
+    /* Felt Table Styling */
+    .felt-table {
+      background: radial-gradient(circle at center, #15803d 0%, #166534 60%, #14532d 100%);
+      box-shadow: inset 0 0 80px rgba(0,0,0,0.6);
+    }
+
+    /* Playing Card CSS */
+    .playing-card {
+      width: 80px;
+      height: 116px;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      position: relative;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      border: 1px solid #cbd5e1;
+    }
+
+    @media (min-width: 768px) {
+      .playing-card {
+        width: 96px;
+        height: 140px;
+      }
+    }
+
+    .playing-card.playable {
+      box-shadow: 0 0 0 3px #3b82f6, 0 8px 16px rgba(59, 130, 246, 0.4);
+    }
+
+    .playing-card.playable:hover {
+      transform: translateY(-18px) scale(1.05);
+    }
+
+    .playing-card.red-suit { color: #dc2626; }
+    .playing-card.black-suit { color: #0f172a; }
+
+    /* Card Corner Indices */
+    .card-corner {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    @media (min-width: 768px) {
+      .card-corner { font-size: 1rem; }
+    }
+    .card-corner.top-left { top: 4px; left: 6px; }
+    .card-corner.bottom-right { bottom: 4px; right: 6px; transform: rotate(180deg); }
+
+    /* Hand Docking Offset */
+    .hand-dock {
+      margin-bottom: 12px;
+    }
+
+    /* Radial Trick Slots */
+    .trick-slot-north { top: 12%; left: 50%; transform: translateX(-50%); }
+    .trick-slot-south { bottom: 12%; left: 50%; transform: translateX(-50%); }
+    .trick-slot-west  { left: 18%; top: 50%; transform: translateY(-50%); }
+    .trick-slot-east  { right: 18%; top: 50%; transform: translateY(-50%); }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col justify-between">
+
+  <!-- AUTH & LOBBY OVERLAY -->
+  <div id="authOverlay" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl">
+      <div class="text-center mb-6">
+        <h1 class="text-3xl font-bold font-cinzel text-amber-400 tracking-wider">KAALI RANI</h1>
+        <p class="text-xs text-slate-400 mt-1">Multiplayer Evasion Card Game</p>
+      </div>
+
+      <!-- Auth Form -->
+      <div id="authForm" class="space-y-4">
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Display Name</label>
+          <input id="displayNameInput" type="text" placeholder="e.g. Player 1" class="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Email Address</label>
+          <input id="emailInput" type="email" placeholder="player@example.com" class="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Password</label>
+          <input id="passwordInput" type="password" placeholder="••••••••" class="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button onclick="handleAuth('login')" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2.5 rounded-lg text-sm transition">Log In</button>
+          <button onclick="handleAuth('signup')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-lg text-sm transition">Sign Up</button>
+        </div>
+        <div class="relative flex py-2 items-center">
+          <div class="flex-grow border-t border-slate-800"></div>
+          <span class="flex-shrink mx-4 text-xs text-slate-500">OR</span>
+          <div class="flex-grow border-t border-slate-800"></div>
+        </div>
+        <button onclick="startGuestMode()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2 rounded-lg text-xs transition">Play as Guest / Offline vs AI</button>
+      </div>
+
+      <!-- Lobby Menu (Hidden by default) -->
+      <div id="lobbyMenu" class="hidden space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <span id="welcomeUser" class="text-sm font-semibold text-amber-400">Welcome, Player</span>
+          <button onclick="logout()" class="text-xs text-rose-400 hover:underline">Log Out</button>
+        </div>
+        <button onclick="createRoom()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition shadow-lg">Create New Room</button>
+        
+        <div class="space-y-2 pt-2">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Join Existing Room</label>
+          <div class="flex gap-2">
+            <input id="roomCodeInput" type="text" placeholder="KR-1234" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white uppercase focus:outline-none focus:ring-2 focus:ring-amber-500 flex-1">
+            <button onclick="joinRoom()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">Join</button>
+          </div>
+        </div>
+
+        <button onclick="startSoloVsAI()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2.5 rounded-lg text-xs transition mt-2">Start Solo Match vs 3 Bots</button>
+      </div>
+
+      <!-- Multiplayer Waiting Lobby (Hidden by default) -->
+      <div id="waitingLobby" class="hidden space-y-4">
+        <div class="text-center">
+          <span class="text-xs text-slate-400 uppercase tracking-widest">Room Code</span>
+          <div id="displayRoomCode" class="text-2xl font-bold font-cinzel text-amber-400 tracking-widest mt-0.5">KR-0000</div>
+        </div>
+        
+        <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700 space-y-2">
+          <div class="text-xs font-semibold text-slate-400 mb-2">CONNECTED PLAYERS (<span id="playerCount">1</span>/4)</div>
+          <div id="playerList" class="space-y-1.5 text-sm">
+            <!-- Dynamic player slots -->
+          </div>
+        </div>
+
+        <div id="hostControls" class="space-y-2 pt-2">
+          <button id="startMultiGameBtn" onclick="launchMultiplayerGame()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg transition shadow-lg">
+            Start Game (Fill Bots)
+          </button>
+          <p class="text-[11px] text-slate-400 text-center">You can wait for 4 human players or start anytime with AI bots filling open seats.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME TABLE -->
+  <main class="relative flex-1 felt-table flex flex-col justify-between p-4 overflow-hidden">
+    
+    <!-- TOP PLAYER (NORTH) -->
+    <div class="flex flex-col items-center">
+      <div id="badge-north" class="bg-slate-900/80 border border-slate-700 px-4 py-1.5 rounded-full text-xs font-medium text-slate-300 shadow">
+        North (AI Bot 2) — <span id="score-north">0 pts</span>
+      </div>
+    </div>
+
+    <!-- CENTER FELT / TRICK SLOTS -->
+    <div class="relative flex-1 flex items-center justify-center">
+      <div id="tableCenterLogo" class="text-center opacity-20 pointer-events-none">
+        <h2 class="text-4xl md:text-6xl font-bold font-cinzel text-amber-200 tracking-widest">KAALI RANI</h2>
+      </div>
+
+      <!-- Trick Trophy Banner -->
+      <div id="trickBanner" class="hidden absolute z-30 bg-amber-500 text-slate-950 font-bold px-6 py-2 rounded-full shadow-2xl text-sm md:text-base animate-bounce">
+        🏆 Player Wins Trick!
+      </div>
+
+      <!-- Radial Trick Cards -->
+      <div id="trickCardNorth" class="absolute trick-slot-north hidden"></div>
+      <div id="trickCardSouth" class="absolute trick-slot-south hidden"></div>
+      <div id="trickCardWest"  class="absolute trick-slot-west hidden"></div>
+      <div id="trickCardEast"  class="absolute trick-slot-east hidden"></div>
+
+      <!-- Turn Indicator -->
+      <div id="turnIndicator" class="absolute top-4 bg-slate-900/90 border border-amber-500/50 text-amber-300 px-4 py-1 rounded-full text-xs font-semibold">
+        Waiting for Game Start...
+      </div>
+    </div>
+
+    <!-- WEST & EAST PLAYER BADGES -->
+    <div id="badge-west" class="absolute left-4 top-1/2 -translate-y-1/2 bg-slate-900/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 shadow">
+      West — <span id="score-west">0 pts</span>
+    </div>
+    <div id="badge-east" class="absolute right-4 top-1/2 -translate-y-1/2 bg-slate-900/80 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 shadow">
+      East — <span id="score-east">0 pts</span>
+    </div>
+
+    <!-- BOTTOM PLAYER (YOU / SOUTH) -->
+    <div class="flex flex-col items-center z-20 hand-dock">
+      <div id="badge-south" class="bg-slate-900/90 border border-amber-500/60 px-4 py-1.5 rounded-full text-xs font-bold text-amber-400 shadow mb-2">
+        You (South) — <span id="score-south">0 pts</span>
+      </div>
+
+      <!-- Player Hand Dock -->
+      <div id="playerHand" class="flex justify-center items-center h-32 md:h-40 px-4 max-w-full overflow-x-auto">
+        <!-- Dealt cards will render here -->
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Standalone Demo Firebase Config placeholder (Works offline or when connected)
+    const firebaseConfig = {
+      apiKey: "DEMO_KEY",
+      authDomain: "demo-kaali-rani.firebaseapp.com",
+      projectId: "demo-kaali-rani",
+      storageBucket: "demo-kaali-rani.appspot.com",
+      messagingSenderId: "00000000000",
+      appId: "1:00000000000:web:00000000000000"
+    };
+
+    let isFirebaseReady = false;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      isFirebaseReady = true;
+    } catch(e) {
+      console.warn("Running in local offline mode without Firebase backend.");
+    }
+
+    // App State
+    let currentUser = { uid: "guest_" + Math.random().toString(36).substr(2, 5), name: "Guest Player" };
+    let currentRoomCode = null;
+    let isSoloMode = false;
+
+    function handleAuth(type) {
+      const email = document.getElementById('emailInput').value;
+      const name = document.getElementById('displayNameInput').value || "Player";
+      if(name) currentUser.name = name;
+
+      document.getElementById('welcomeUser').innerText = `Welcome, ${currentUser.name}`;
+      document.getElementById('authForm').classList.add('hidden');
+      document.getElementById('lobbyMenu').classList.remove('hidden');
+    }
+
+    function startGuestMode() {
+      document.getElementById('welcomeUser').innerText = `Welcome, ${currentUser.name}`;
+      document.getElementById('authForm').classList.add('hidden');
+      document.getElementById('lobbyMenu').classList.remove('hidden');
+    }
+
+    function logout() {
+      document.getElementById('lobbyMenu').classList.add('hidden');
+      document.getElementById('waitingLobby').classList.add('hidden');
+      document.getElementById('authForm').classList.remove('hidden');
+    }
+
+    function createRoom() {
+      currentRoomCode = "KR-" + Math.floor(1000 + Math.random() * 9000);
+      document.getElementById('displayRoomCode').innerText = currentRoomCode;
+      document.getElementById('lobbyMenu').classList.add('hidden');
+      document.getElementById('waitingLobby').classList.remove('hidden');
+      updateLobbyUI([currentUser.name]);
+    }
+
+    function joinRoom() {
+      const input = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+      if(!input) return alert("Please enter a room code!");
+      currentRoomCode = input;
+      document.getElementById('displayRoomCode').innerText = currentRoomCode;
+      document.getElementById('lobbyMenu').classList.add('hidden');
+      document.getElementById('waitingLobby').classList.remove('hidden');
+      updateLobbyUI(["Host Player", currentUser.name]);
+    }
+
+    function updateLobbyUI(players) {
+      const list = document.getElementById('playerList');
+      document.getElementById('playerCount').innerText = players.length;
+      list.innerHTML = players.map((p, i) => `
+        <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg">
+          <span class="font-medium text-slate-200">${p}</span>
+          <span class="text-xs text-emerald-400">Ready</span>
+        </div>
+      `).join('');
+    }
+
+    function startSoloVsAI() {
+      isSoloMode = true;
+      document.getElementById('authOverlay').classList.add('hidden');
+      initGame(["You", "Alex (Bot)", "Sam (Bot)", "Jordan (Bot)"]);
+    }
+
+    function launchMultiplayerGame() {
+      document.getElementById('authOverlay').classList.add('hidden');
+      initGame([currentUser.name, "Bot West", "Bot North", "Bot East"]);
+    }
+
+    // --- GAME LOGIC ---
+    const SUITS = ['♠', '♥', '♦', '♣'];
+    const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    let playerHand = [];
+
+    function initGame(playerNames) {
+      document.getElementById('badge-south').innerText = `${playerNames[0]} (South) — 0 pts`;
+      document.getElementById('badge-west').innerText = `${playerNames[1]} — 0 pts`;
+      document.getElementById('badge-north').innerText = `${playerNames[2]} — 0 pts`;
+      document.getElementById('badge-east').innerText = `${playerNames[3]} — 0 pts`;
+
+      dealSampleHand();
+    }
+
+    function dealSampleHand() {
+      playerHand = [
+        { suit: '♠', rank: 'Q', isKaaliRani: true },
+        { suit: '♠', rank: 'A' },
+        { suit: '♥', rank: '10' },
+        { suit: '♥', rank: 'K' },
+        { suit: '♦', rank: 'J' },
+        { suit: '♦', rank: '7' },
+        { suit: '♣', rank: 'A' },
+        { suit: '♣', rank: '2' }
+      ];
+      renderHand();
+      document.getElementById('turnIndicator').innerText = "👉 YOUR TURN (Lead any card)";
+    }
+
+    function renderHand() {
+      const dock = document.getElementById('playerHand');
+      dock.innerHTML = '';
+      playerHand.forEach((card, index) => {
+        const isRed = card.suit === '♥' || card.suit === '♦';
+        const cardEl = document.createElement('div');
+        cardEl.className = `playing-card playable ${isRed ? 'red-suit' : 'black-suit'} -ml-4 first:ml-0`;
+        cardEl.innerHTML = `
+          <div class="card-corner top-left">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+          <div class="absolute inset-0 flex items-center justify-center text-xl font-bold">
+            ${card.rank === 'Q' && card.suit === '♠' ? '👑' : card.suit}
+          </div>
+          <div class="card-corner bottom-right">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+        `;
+        cardEl.onclick = () => playCard(index);
+        dock.appendChild(cardEl);
+      });
+    }
+
+    function playCard(index) {
+      const card = playerHand.splice(index, 1)[0];
+      renderHand();
+
+      // Show played card in South slot
+      const southSlot = document.getElementById('trickCardSouth');
+      southSlot.classList.remove('hidden');
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      southSlot.innerHTML = `
+        <div class="playing-card ${isRed ? 'red-suit' : 'black-suit'}">
+          <div class="card-corner top-left">
+            <span>${card.rank}</span>
+            <span>${card.suit}</span>
+          </div>
+          <div class="absolute inset-0 flex items-center justify-center text-xl font-bold">${card.suit}</div>
+        </div>
+      `;
+
+      document.getElementById('turnIndicator').innerText = "AI Bots are thinking...";
+      
+      // Simulate Bot Plays
+      setTimeout(() => {
+        document.getElementById('trickBanner').classList.remove('hidden');
+        document.getElementById('trickBanner').innerText = "🏆 You won the trick!";
+        setTimeout(() => {
+          document.getElementById('trickBanner').classList.add('hidden');
+          southSlot.classList.add('hidden');
+          document.getElementById('turnIndicator').innerText = "👉 YOUR TURN";
+        }, 1200);
+      }, 800);
+    }
+  </script>
+</body>
+</html>
